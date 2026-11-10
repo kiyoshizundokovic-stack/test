@@ -1,0 +1,30 @@
+# CLAUDE.md — 作業ルール
+
+野球ローグライク（ブラウザ / PWA）。Vite + TypeScript + React、テストは Vitest。
+
+## 仕様
+- **仕様の正は `SPEC.md`**。実装と食い違ったら SPEC.md に合わせる。
+- 仕様変更・追加の決定が出たら、コードと同じコミットで **SPEC.md も更新**する。
+- 推測で埋めた点・実装時に決めた点は SPEC.md「10. 決定ログ」に追記し、コミットメッセージにも書く。
+- 「【要確認】」や矛盾・不明点は、実装前にユーザーへ質問する。
+
+## 設計ルール
+- **ゲームロジックは `src/core/` に置き、React に依存させない**（`react` やDOM APIを import しない）。Node 上で単体実行・テストできること。UI（`src/*.tsx` など）は core を呼ぶだけにする。
+- **数値は `src/core/config.ts` に集約する**。能力値の上下限・確率係数・報酬額・生成パラメータなどをロジックにハードコードしない（エンドレスモードでの上限撤廃に備える）。
+- **乱数はシード付きPRNG（`src/core/rng.ts` の `Rng`）を使う**。`Math.random()` はゲームロジックで使わない。同じシード・同じ入力なら同じ結果になること。PRNGの状態はセーブデータに保存できる形に保つ。
+- 選手などのデータはJSONシリアライズ可能なプレーンオブジェクトにする（セーブデータにそのまま入るため）。
+
+## 進め方
+- `SPEC.md`「9. 実装フェーズ」を **1フェーズずつ** 実装する。
+- フェーズ完了時：`npm test` と `npm run typecheck` を通す → コミット（必要ならプッシュ） → **そこで止まり、ユーザーに報告して次の指示を待つ**。次のフェーズへ勝手に進まない。
+
+## コマンド
+- `npm test` … Vitest（`src/**/*.test.ts`）
+- `npm run typecheck` … 型チェック
+- `npm run dev` / `npm run build` … 開発サーバー / ビルド
+- `npm run players -- [seed] [人数]` … 選手を生成して能力表をコンソール出力
+
+## ディレクトリ
+- `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format）
+- `scripts/` … Node で実行する確認用スクリプト（tsx）
+- `src/App.tsx`, `src/main.tsx` … React UI

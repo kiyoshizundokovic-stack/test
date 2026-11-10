@@ -45,7 +45,7 @@ describe('作戦AI・バリデーション', () => {
     const swapped = [...s1.lineup];
     [swapped[0], swapped[1]] = [swapped[1]!, swapped[0]!];
     const reorder: GamePlan = { stages: [s0, { lineup: swapped, positions: s1.positions }] };
-    expect(validatePlan(reorder, players).some((e) => e.includes('打順が変わっている'))).toBe(true);
+    expect(validatePlan(reorder, players).some((e) => e.includes('打順が変わって'))).toBe(true);
 
     // 守備位置の重複
     const dup: GamePlan = { stages: [{ lineup: s0.lineup, positions: { ...s0.positions, C: s0.positions.SS } }] };

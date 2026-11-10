@@ -6,3 +6,5 @@ export * from './pitches';
 export * from './overall';
 export * from './generate';
 export * from './format';
+export * from './team';
+export * from './game';

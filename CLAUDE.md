@@ -23,8 +23,10 @@
 - `npm run typecheck` … 型チェック
 - `npm run dev` / `npm run build` … 開発サーバー / ビルド
 - `npm run players -- [seed] [人数]` … 選手を生成して能力表をコンソール出力
+- `npm run game -- [seed] [平均総合力]` … 2チームで1試合を実行し、ログ・スコアボード・成績を出力
 
 ## ディレクトリ
-- `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format）
+- `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format, team）
+- `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format）
 - `scripts/` … Node で実行する確認用スクリプト（tsx）
 - `src/App.tsx`, `src/main.tsx` … React UI

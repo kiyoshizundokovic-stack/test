@@ -28,6 +28,7 @@
 
 ## ディレクトリ
 - `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format, team）
-- `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format, balance＝バランス検証の集計）
+- `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format, balance＝バランス検証の集計, planEdit＝作戦の編集操作）
 - `scripts/` … Node で実行する確認用スクリプト（tsx）
-- `src/App.tsx`, `src/main.tsx` … React UI
+- `src/App.tsx`, `src/main.tsx`, `src/styles.css` … React UI のエントリ
+- `src/ui/` … 画面コンポーネント（StrategyEditor＝作戦設定 など）

@@ -93,36 +93,56 @@ export function buildAutoPlan(players: readonly Player[]): GamePlan {
   return { stages };
 }
 
-/** 作戦のバリデーション。エラーメッセージの配列を返す（空なら有効） */
-export function validatePlan(plan: GamePlan, players: readonly Player[]): string[] {
-  const errors: string[] = [];
-  const ids = new Set(players.map((p) => p.id));
-  if (plan.stages.length === 0) return ['段階が1つもない'];
+/** 継投段階の表示名（0 = 先発、1 = 2番手 …） */
+export function stageLabel(index: number): string {
+  return index === 0 ? '先発' : `${index + 1}番手`;
+}
+
+export interface PlanIssue {
+  /** 問題のある段階（作戦全体の問題なら null） */
+  stage: number | null;
+  message: string;
+}
+
+/** 作戦のバリデーション（段階ごとの問題点）。空なら有効 */
+export function validatePlanDetailed(plan: GamePlan, players: readonly Player[]): PlanIssue[] {
+  const issues: PlanIssue[] = [];
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const name = (id: string) => {
+    const p = byId.get(id);
+    return p ? `${p.name.family} ${p.name.given}` : `不明な選手(${id})`;
+  };
+  if (plan.stages.length === 0) return [{ stage: null, message: '継投の段階が1つもありません' }];
   const removed = new Set<string>();
   plan.stages.forEach((stage, i) => {
-    const label = `段階${i + 1}`;
-    if (stage.lineup.length !== 9) errors.push(`${label}: 打順が9人でない`);
-    if (new Set(stage.lineup).size !== stage.lineup.length) errors.push(`${label}: 打順に重複がある`);
+    const add = (message: string) => issues.push({ stage: i, message: `${stageLabel(i)}: ${message}` });
+    if (stage.lineup.length !== 9) add('打順が9人ではありません');
+    if (new Set(stage.lineup).size !== stage.lineup.length) add('打順に同じ選手が重複しています');
     const placed = POSITIONS.map((pos) => stage.positions[pos]);
-    if (placed.some((id) => id === undefined)) errors.push(`${label}: 守備位置に空きがある`);
-    if (new Set(placed).size !== 9) errors.push(`${label}: 守備位置に重複がある`);
+    if (placed.some((id) => id === undefined)) add('守備位置に空きがあります');
+    else if (new Set(placed).size !== 9) add('同じ選手が複数の守備位置に就いています');
     for (const id of stage.lineup) {
-      if (!ids.has(id)) errors.push(`${label}: 不明な選手 ${id}`);
-      if (removed.has(id)) errors.push(`${label}: 退いた選手が再出場している ${id}`);
+      if (!byId.has(id)) add(`${name(id)}はチームにいません`);
+      if (removed.has(id)) add(`${name(id)}は一度退いたため再出場できません`);
     }
     if (!placed.every((id) => id !== undefined && stage.lineup.includes(id))) {
-      errors.push(`${label}: 守備に就く選手と打順の選手が一致しない`);
+      add('守備に就く選手と打順の選手が一致しません');
     }
     const prev = plan.stages[i - 1];
     if (prev) {
       prev.lineup.forEach((id, slot) => {
         if (stage.lineup.includes(id) && stage.lineup[slot] !== id) {
-          errors.push(`${label}: 継続出場の選手の打順が変わっている ${id}`);
+          add(`${name(id)}の打順が変わっています（打順は人に紐づきます）`);
         }
         if (!stage.lineup.includes(id)) removed.add(id);
       });
-      if (stage.positions.P === prev.positions.P) errors.push(`${label}: 投手が前の段階と同じ`);
+      if (stage.positions.P === prev.positions.P) add('投手が前の段階と同じです（投手を交代してください）');
     }
   });
-  return errors;
+  return issues;
+}
+
+/** 作戦のバリデーション。エラーメッセージの配列を返す（空なら有効） */
+export function validatePlan(plan: GamePlan, players: readonly Player[]): string[] {
+  return validatePlanDetailed(plan, players).map((i) => i.message);
 }

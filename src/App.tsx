@@ -1,20 +1,32 @@
-import { useMemo, useState } from 'react';
-import { formatPlayerTable, generatePlayers, INITIAL_ROSTER_SIZE, Rng } from './core';
+import { useState } from 'react';
+import { buildAutoPlan, generateOpponentRoster, PLAYER_GENERATION, Rng, type GamePlan, type Player } from './core';
+import { StrategyEditor } from './ui/StrategyEditor';
 
-/** フェーズ1時点の仮画面：生成した選手の能力表を表示するだけ */
+/** 12人のサンプルチーム（フェーズ4時点の動作確認用。ゲーム進行はフェーズ6で実装） */
+function sampleTeam(seed: number): { roster: Player[]; plan: GamePlan } {
+  const roster = generateOpponentRoster(new Rng(seed), PLAYER_GENERATION.initialTargetOverall);
+  return { roster, plan: buildAutoPlan(roster) };
+}
+
 export function App() {
   const [seed, setSeed] = useState(1);
-  const table = useMemo(
-    () => formatPlayerTable(generatePlayers(new Rng(seed), INITIAL_ROSTER_SIZE)),
-    [seed],
-  );
+  const [team, setTeam] = useState(() => sampleTeam(1));
+
+  const regenerate = () => {
+    const next = seed + 1;
+    setSeed(next);
+    setTeam(sampleTeam(next));
+  };
+
   return (
-    <main style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 20 }}>野球ローグライク（開発中）</h1>
-      <p>
-        seed: {seed} <button onClick={() => setSeed((s) => s + 1)}>再生成</button>
-      </p>
-      <pre style={{ overflowX: 'auto', fontSize: 12 }}>{table}</pre>
+    <main className="app">
+      <header className="app-header">
+        <h1>作戦設定</h1>
+        <button className="btn" onClick={regenerate}>
+          サンプルチームを変更
+        </button>
+      </header>
+      <StrategyEditor roster={team.roster} plan={team.plan} onChange={(plan) => setTeam({ ...team, plan })} />
     </main>
   );
 }

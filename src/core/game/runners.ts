@@ -108,7 +108,8 @@ export function applyPlay(
     let blocked = false;
     for (let b = cur + 1; b < ex.to; b++) if (next[b - 1]) blocked = true;
     if (blocked) continue;
-    if (rng.next() >= (ex.attempt[outs] ?? 0)) continue;
+    // 試行確率はプレー前のアウトカウントで引く（打者アウトで増えた後の値ではない）
+    if (rng.next() >= (ex.attempt[state.outs] ?? 0)) continue;
     next[cur - 1] = null;
     const success = !ex.risky || rng.next() < runSuccessProbability(ex.kind, playerOf(r.id), thrower);
     if (success) {

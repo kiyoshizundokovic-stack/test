@@ -128,7 +128,7 @@ export function simulateGame(away: TeamEntry, home: TeamEntry, seed: number): Ga
         const form = pitcherForm(pitcher, thrown);
 
         const step1 = drawStep1(rng, batter, form, catcher);
-        const pitches = drawPitchCount(rng, step1, form);
+        const pitches = drawPitchCount(rng, step1, form, batter);
         pitchCounts.set(pitcher.id, thrown + pitches);
 
         let key: RuleKey;

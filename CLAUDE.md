@@ -24,9 +24,10 @@
 - `npm run dev` / `npm run build` … 開発サーバー / ビルド
 - `npm run players -- [seed] [人数]` … 選手を生成して能力表をコンソール出力
 - `npm run game -- [seed] [平均総合力]` … 2チームで1試合を実行し、ログ・スコアボード・成績を出力
+- `npm run balance -- [試合数] [seed] [平均総合力]` … バランス検証（目標値との比較）。config の係数を変えたら必ず実行する
 
 ## ディレクトリ
 - `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format, team）
-- `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format）
+- `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format, balance＝バランス検証の集計）
 - `scripts/` … Node で実行する確認用スクリプト（tsx）
 - `src/App.tsx`, `src/main.tsx` … React UI

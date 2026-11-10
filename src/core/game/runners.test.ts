@@ -61,6 +61,18 @@ describe('走者処理', () => {
     expect(scored).toBeGreaterThan(100);
   });
 
+  it('一死からの外野フライでもタッチアップを試みる（犠牲フライが成立する）', () => {
+    let scored = 0;
+    for (let seed = 0; seed < 100; seed++) {
+      const r = play('FO', [null, null, R(3)], 1, seed);
+      if (r.scored.length === 1) {
+        scored++;
+        expect(r.outs).toBe(2);
+      }
+    }
+    expect(scored).toBeGreaterThan(50);
+  });
+
   it('二塁打：二・三塁走者は生還し、打者は二塁', () => {
     const r = play('2B', [null, R(2), R(3)], 0);
     expect(r.scored).toHaveLength(2);

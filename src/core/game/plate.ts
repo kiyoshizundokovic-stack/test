@@ -54,7 +54,11 @@ export function step1Probabilities(batter: Player, form: PitcherForm, catcher: P
     k.max,
   );
   const w = PLATE.walk;
-  const pBB = clamp(w.base - w.control * (form.control - BASELINE) - w.catcher * c, w.min, w.max);
+  const pBB = clamp(
+    w.base - w.control * (form.control - BASELINE) + w.eye * d(b.contact, FIELDER_ABILITY_MAX) - w.catcher * c,
+    w.min,
+    w.max,
+  );
 
   const bb = PLATE.battedBall;
   const contact = d(b.contact, FIELDER_ABILITY_MAX);
@@ -62,7 +66,7 @@ export function step1Probabilities(batter: Player, form: PitcherForm, catcher: P
   const stuff = form.stuff - BASELINE;
   const gb = Math.max(bb.minWeight, bb.groundBall.base + bb.groundBall.stuff * stuff - bb.groundBall.power * power);
   const ld = Math.max(bb.minWeight, bb.lineDrive.base + bb.lineDrive.contact * contact - bb.lineDrive.stuff * stuff);
-  const fb = Math.max(bb.minWeight, bb.flyBall.base + bb.flyBall.power * power);
+  const fb = Math.max(bb.minWeight, bb.flyBall.base + bb.flyBall.power * power - bb.flyBall.stuff * stuff);
   const inPlay = 1 - pK - pBB;
   const sum = gb + ld + fb;
   return {
@@ -81,9 +85,11 @@ export function drawStep1(rng: Rng, batter: Player, form: PitcherForm, catcher: 
 }
 
 /** 打席の球数 */
-export function drawPitchCount(rng: Rng, result: Step1Result, form: PitcherForm): number {
+export function drawPitchCount(rng: Rng, result: Step1Result, form: PitcherForm, batter: Player): number {
   const conf = result === 'K' ? PITCHES_PER_PA.strikeout : result === 'BB' ? PITCHES_PER_PA.walk : PITCHES_PER_PA.inPlay;
-  const mean = conf.extraMean * Math.max(0.3, 1 + PITCHES_PER_PA.control * (BASELINE - form.control));
+  const factor =
+    1 + PITCHES_PER_PA.control * (BASELINE - form.control) + PITCHES_PER_PA.contact * d(batter.fielder.contact, FIELDER_ABILITY_MAX);
+  const mean = conf.extraMean * Math.max(0.3, factor);
   const trials = PITCHES_PER_PA.trials;
   const p = clamp(mean / trials, 0, 1);
   let extra = 0;
@@ -96,7 +102,8 @@ export function homeRunProbability(type: BattedType, batter: Player, form: Pitch
   if (type === 'groundBall') return 0;
   const base = type === 'flyBall' ? HOME_RUN.flyBall : HOME_RUN.lineDrive;
   const power = d(batter.fielder.power, FIELDER_ABILITY_MAX);
-  return clamp(base * Math.exp(HOME_RUN.power * power - HOME_RUN.vel * (form.vel - BASELINE)), 0, HOME_RUN.max);
+  const pitcher = (form.vel + form.stuff) / 2 - BASELINE;
+  return clamp(base * Math.exp(HOME_RUN.power * power - HOME_RUN.pitcher * pitcher), 0, HOME_RUN.max);
 }
 
 export function drawZone(rng: Rng, type: BattedType): Position {
@@ -112,18 +119,30 @@ export function outProbability(type: BattedType, zone: Position, batter: Player,
   if (type === 'groundBall') {
     if (isOutfield(zone)) return 0; // 内野を抜けた打球
     const g = FIELDING.groundBall;
-    return clamp(g.base + g.fielding * d(f.fielding, M) + g.arm * d(f.arm, M) - g.speed * d(b.speed, M), g.min, g.max);
+    return clamp(
+      g.base + g.fielding * d(f.fielding, M) + g.arm * d(f.arm, M) - g.speed * d(b.speed, M) - g.contact * d(b.contact, M),
+      g.min,
+      g.max,
+    );
   }
   if (type === 'lineDrive') {
     const l = FIELDING.lineDrive;
-    return clamp(l.base + l.catching * d(f.catching, M) + l.fielding * d(f.fielding, M) - l.contact * d(b.contact, M), l.min, l.max);
+    return clamp(
+      l.base + l.catching * d(f.catching, M) + l.fielding * d(f.fielding, M) - l.contact * d(b.contact, M) - l.power * d(b.power, M),
+      l.min,
+      l.max,
+    );
   }
   if (!isOutfield(zone)) {
     const i = FIELDING.infieldFly;
     return clamp(i.base + i.catching * d(f.catching, M), i.min, i.max);
   }
   const o = FIELDING.outfieldFly;
-  return clamp(o.base + o.fielding * d(f.fielding, M) + o.catching * d(f.catching, M) - o.power * d(b.power, M), o.min, o.max);
+  return clamp(
+    o.base + o.fielding * d(f.fielding, M) + o.catching * d(f.catching, M) - o.power * d(b.power, M) - o.contact * d(b.contact, M),
+    o.min,
+    o.max,
+  );
 }
 
 /** 安打の塁打数（1〜3）。内野への打球は単打 */

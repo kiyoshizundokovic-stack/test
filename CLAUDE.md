@@ -28,11 +28,14 @@
 - `npm run verify:steals -- [試合数] [seed]` … 盗塁の検証（積極度・能力帯ごとの企図数・成功率）
 - `npm run verify:errors -- [試合数] [seed]` … エラーの検証（捕球・送球をそろえたチームの能力帯・守備位置ごとのエラー数）
 - `npm run run-sim -- [ラン数] [開始seed]` … ローグライク進行の通しシミュレーション（簡単な方針で自動プレイし、到達試合数・完走率を集計）
+- `npm run balance-report [-- quick]` … 難易度のバランス検証一式（作戦の効果・戦力差・先発投手・ローグライク全体・調整案の比較）を実行し `docs/balance-report.md` に書き出す（数分かかる。quick は試行回数1/5で書き出さない）
 
 ## ディレクトリ
 - `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format, team）
 - `src/core/run/` … ローグライク進行（RunState、試合・補強・ボス報酬・終了判定）
+- `src/core/analysis/` … バランス検証専用（最適化した作戦ボット、ランダム配置、対戦の勝率測定、規則を差し替えられるローグライクのシミュレーター）。ゲームの仕様ではない
 - `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format, balance＝バランス検証の集計, planEdit＝作戦の編集操作, fielding＝エラー判定, steal＝盗塁, replay＝試合画面の再生）
 - `scripts/` … Node で実行する確認用スクリプト（tsx）
+- `docs/` … 検証レポート（balance-report.md）
 - `src/App.tsx`, `src/main.tsx`, `src/styles.css` … React UI のエントリ
 - `src/ui/` … 画面コンポーネント（StrategyEditor＝作戦設定、GameScreen＝試合画面、RunScreens＝ホーム・結果と補強・ボス報酬・終了、PlayerCard＝選手表示 など）

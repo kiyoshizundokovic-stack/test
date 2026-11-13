@@ -33,7 +33,8 @@ export interface RunnerRule {
 
 export type RuleKey =
   | 'K' | 'BB' | 'HR' | '3B' | '2B' | '1B' | '1B_IF'
-  | 'GO' | 'DP' | 'FC' | 'LO' | 'FO' | 'FO_IF';
+  | 'GO' | 'DP' | 'FC' | 'LO' | 'FO' | 'FO_IF'
+  | 'E' | 'FC_E' | 'DP_E2';
 
 export const RUNNER_TABLE: Record<RuleKey, RunnerRule> = {
   K: { batter: 0, runners: 'stay' },
@@ -70,6 +71,15 @@ export const RUNNER_TABLE: Record<RuleKey, RunnerRule> = {
   DP: { batter: 0, runners: { 1: 0, 2: 3, 3: 4 } },
   /** 併殺崩れ（一塁走者封殺、打者は一塁へ） */
   FC: { batter: 1, runners: { 1: 0, 2: 3, 3: 4 } },
+  /**
+   * エラー（SPEC 3.4）：狙ったアウトは成立せず、打者は出塁し、各走者はエラーがなかった場合より1つ先へ。
+   * E：打者を狙った打球処理（ゴロ・フライ・ライナー）のエラー。打者一塁、走者は1つ進む
+   */
+  E: { batter: 1, runners: { 1: 2, 2: 3, 3: 4 } },
+  /** 二塁封殺を狙った動作（捕球・送球・受け手の捕球）のエラー：一塁走者は二塁セーフ＋1つ先、打者一塁 */
+  FC_E: { batter: 1, runners: { 1: 3, 2: 4, 3: 4 } },
+  /** 併殺の二塁封殺の後（一塁への送球・受け手の捕球）のエラー：一塁走者アウト、打者一塁、他の走者は1つ先 */
+  DP_E2: { batter: 1, runners: { 1: 0, 2: 4, 3: 4 } },
   /** 外野フライアウト：タッチアップ */
   FO: {
     batter: 0,

@@ -32,16 +32,16 @@ function fitScore(p: Player, pos: Exclude<Position, 'P'>): number {
 
 /**
  * 能力から簡易に打順を決める（相手AI）。
- * 打力（ミート+パワー）上位3人をパワー順に4・3・5番、残りからミート+走力の上位2人を1・2番、残りを打力順に6〜9番。
+ * 打力（ミート+パワー）上位3人をパワー順に4・3・5番、残りから出塁・機動力（ミート+選球眼+走力+盗塁）の上位2人を1・2番、
+ * 残りを打力順に6〜9番。
  */
 export function autoBattingOrder(nine: readonly Player[]): string[] {
   const bat = (p: Player) => p.fielder.contact + p.fielder.power;
   const sorted = [...nine].sort((a, b) => bat(b) - bat(a));
   const cleanup = sorted.slice(0, 3).sort((a, b) => b.fielder.power - a.fielder.power);
   const rest = sorted.slice(3);
-  const top = [...rest]
-    .sort((a, b) => b.fielder.contact + b.fielder.speed - (a.fielder.contact + a.fielder.speed))
-    .slice(0, 2);
+  const table = (p: Player) => p.fielder.contact + p.fielder.eye + p.fielder.speed + p.fielder.steal;
+  const top = [...rest].sort((a, b) => table(b) - table(a)).slice(0, 2);
   const bottom = rest.filter((p) => !top.includes(p));
   const order = [top[0], top[1], cleanup[1], cleanup[0], cleanup[2], ...bottom];
   return order.map((p) => p!.id);
@@ -53,6 +53,7 @@ export function autoBattingOrder(nine: readonly Player[]): string[] {
  * - 控え投手：残りから投手の質の上位 relievers 人（控えが足りなければその人数）
  * - 野手：残りの8人を重要な守備位置から順に適性の高い選手で埋める
  * - 継投：控え投手を順に登板させ、投手の打順・守備位置だけを引き継ぐ
+ * - 盗塁の積極度：全員「通常」（stealPolicy を指定しない）
  */
 export function buildAutoPlan(players: readonly Player[]): GamePlan {
   if (players.length < 9) throw new Error('buildAutoPlan: 9人以上必要');

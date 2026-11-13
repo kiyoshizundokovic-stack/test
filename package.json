@@ -12,7 +12,9 @@
     "typecheck": "tsc -b",
     "players": "tsx scripts/print-players.ts",
     "game": "tsx scripts/run-game.ts",
-    "balance": "tsx scripts/balance.ts"
+    "balance": "tsx scripts/balance.ts",
+    "verify:steals": "tsx scripts/verify-steals.ts",
+    "verify:errors": "tsx scripts/verify-errors.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

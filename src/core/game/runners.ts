@@ -3,7 +3,7 @@ import { BASELINE, FIELDER_ABILITY_MAX, OUTS_PER_INNING, RUNNING } from '../conf
 import type { Rng } from '../rng';
 import type { Player } from '../types';
 import { RUNNER_TABLE, type Base, type Dest, type RuleKey } from './runnerTable';
-import type { RunnerMove } from './types';
+import type { ErrorRecord, RunnerMove } from './types';
 
 /** 塁上の走者（責任投手を記録する） */
 export interface Runner {
@@ -18,7 +18,12 @@ export interface PlayOutcome {
   moves: RunnerMove[];
   /** 生還した走者（責任投手付き） */
   scored: Runner[];
+  /** 送球で起きたエラー */
+  errors: ErrorRecord[];
 }
+
+/** 走者を刺す送球のエラー判定（送球＋受け手の捕球）。エラーならその記録を返す */
+export type ThrowCheck = (to: 2 | 3 | 4) => ErrorRecord | null;
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
@@ -45,6 +50,27 @@ function forcedDestinations(bases: Bases): Partial<Record<Base, Dest>> {
   return res;
 }
 
+/** 塁上の全走者を1つずつ進める（先の走者から）。エラー時の「1つ余分な進塁」に使う */
+export function advanceAll(
+  bases: Bases,
+  moves: RunnerMove[],
+  scored: Runner[],
+  origin: (r: Runner) => 0 | 1 | 2 | 3,
+): Bases {
+  const next: Bases = [null, null, null];
+  for (const b of [3, 2, 1] as Base[]) {
+    const r = bases[b - 1];
+    if (!r) continue;
+    const to = (b + 1) as Dest;
+    if (to === 4) scored.push(r);
+    else next[to - 1] = r;
+    const existing = moves.find((m) => m.runnerId === r.id);
+    if (existing) existing.to = to;
+    else moves.push({ runnerId: r.id, from: origin(r), to });
+  }
+  return next;
+}
+
 export function applyPlay(
   rng: Rng,
   key: RuleKey,
@@ -52,10 +78,12 @@ export function applyPlay(
   batter: Runner,
   thrower: Player,
   playerOf: (id: string) => Player,
+  throwCheck: ThrowCheck = () => null,
 ): PlayOutcome {
   const rule = RUNNER_TABLE[key];
   const moves: RunnerMove[] = [];
   const scored: Runner[] = [];
+  const errors: ErrorRecord[] = [];
   let outs = state.outs;
 
   const defaults: Partial<Record<Base, Dest>> =
@@ -72,16 +100,18 @@ export function applyPlay(
       const r = state.bases[b - 1];
       if (r && defaults[b] === 0) moves.push({ runnerId: r.id, from: b, to: 0 });
     }
-    return { bases: [...state.bases] as Bases, outs: OUTS_PER_INNING, moves, scored };
+    return { bases: [...state.bases] as Bases, outs: OUTS_PER_INNING, moves, scored, errors };
   }
   outs += forcedOuts;
 
   // 走者の現在位置（元の塁 → 今いる塁）
   const position = new Map<Base, Dest>();
-  const next: Bases = [null, null, null];
+  const originOf = new Map<string, 0 | 1 | 2 | 3>([[batter.id, 0]]);
+  let next: Bases = [null, null, null];
   for (const b of [3, 2, 1] as Base[]) {
     const r = state.bases[b - 1];
     if (!r) continue;
+    originOf.set(r.id, b);
     const to = defaults[b] ?? b;
     position.set(b, to);
     if (to !== b) moves.push({ runnerId: r.id, from: b, to });
@@ -111,7 +141,10 @@ export function applyPlay(
     // 試行確率はプレー前のアウトカウントで引く（打者アウトで増えた後の値ではない）
     if (rng.next() >= (ex.attempt[state.outs] ?? 0)) continue;
     next[cur - 1] = null;
-    const success = !ex.risky || rng.next() < runSuccessProbability(ex.kind, playerOf(r.id), thrower);
+
+    // 走者を刺す送球のエラー判定（アウトのリスクがある進塁のみ送球が行われる）
+    const error = ex.risky ? throwCheck(ex.to) : null;
+    const success = error !== null || !ex.risky || rng.next() < runSuccessProbability(ex.kind, playerOf(r.id), thrower);
     if (success) {
       position.set(ex.from, ex.to);
       if (ex.to === 4) scored.push(r);
@@ -125,7 +158,14 @@ export function applyPlay(
     const finalTo = success ? ex.to : 0;
     if (existing) existing.to = finalTo;
     else moves.push({ runnerId: r.id, from: ex.from, to: finalTo });
+
+    if (error) {
+      // エラー：塁上の全走者（打者走者を含む）がさらに1つ進み、以降の進塁判定は行わない
+      errors.push(error);
+      next = advanceAll(next, moves, scored, (x) => originOf.get(x.id) ?? 0);
+      break;
+    }
   }
 
-  return { bases: next, outs, moves, scored };
+  return { bases: next, outs, moves, scored, errors };
 }

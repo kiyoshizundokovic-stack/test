@@ -7,7 +7,10 @@ import {
   POSITION_LABELS,
   POSITIONS,
   type GameResult,
+  FIELDING_ACTION_LABELS,
+  type ErrorRecord,
   type PlateAppearance,
+  type StealAttempt,
   type Position,
   type StageChange,
   type TeamEntry,
@@ -51,7 +54,13 @@ export function playLabel(pa: PlateAppearance): string {
     case 'LO': return `${zs}直`;
     case 'FO': return `${zs}飛`;
     case 'SF': return `${zs}犠飛`;
+    case 'E': return `${zs}${pa.battedType === 'groundBall' ? 'ゴロ' : pa.battedType === 'lineDrive' ? '直' : '飛'}失策で出塁`;
   }
+}
+
+/** エラーの説明（例：「遊撃 山田 太郎の送球エラー」） */
+export function errorLabel(err: ErrorRecord, name: (id: string) => string): string {
+  return `${POSITION_LABELS[err.position]} ${name(err.playerId)}の${FIELDING_ACTION_LABELS[err.action]}エラー`;
 }
 
 const BASE_NAME = ['', '一塁', '二塁', '三塁'];
@@ -63,7 +72,24 @@ export function formatPlateAppearance(pa: PlateAppearance, name: (id: string) =>
     .map((m) => `${name(m.runnerId)}${m.to === 4 ? '生還' : m.to === 0 ? 'アウト' : `${BASE_NAME[m.to]}へ`}`);
   const runs = pa.runs > 0 ? ` ${pa.runs}点 [${pa.scoreAfter.away}-${pa.scoreAfter.home}]` : '';
   const runners = runnerText.length > 0 ? `（${runnerText.join('、')}）` : '';
-  return `${padEnd(head, 22)} ${pa.battingSlot + 1}番 ${padEnd(name(pa.batterId), 12)} ${playLabel(pa)}${runners}${runs}  (${pa.pitches}球)`;
+  const errors = pa.errors.length > 0 ? ` ＜${pa.errors.map((e) => errorLabel(e, name)).join('、')}＞` : '';
+  return `${padEnd(head, 22)} ${pa.battingSlot + 1}番 ${padEnd(name(pa.batterId), 12)} ${playLabel(pa)}${runners}${errors}${runs}  (${pa.pitches}球)`;
+}
+
+const STEAL_LABEL: Record<2 | 3 | 4, string> = { 2: '二盗', 3: '三盗', 4: '本盗' };
+
+export function formatSteal(st: StealAttempt, name: (id: string) => string): string {
+  const head = `${st.inning}回${st.half === 'top' ? '表' : '裏'} ${OUT_LABEL[st.outsBefore]}${basesLabel(st.basesBefore)}`;
+  const result = st.success ? '成功' : '失敗（盗塁死）';
+  const others = st.moves
+    .filter((m) => m.runnerId !== st.runnerId && m.to !== m.from)
+    .map((m) => `${name(m.runnerId)}${m.to === 4 ? '生還' : `${BASE_NAME[m.to]}へ`}`);
+  const self = st.moves.find((m) => m.runnerId === st.runnerId);
+  const extra = self && self.to !== st.to && self.to !== 0 ? `、${self.to === 4 ? '生還' : `${BASE_NAME[self.to]}へ`}` : '';
+  const errors = st.errors.length > 0 ? ` ＜${st.errors.map((e) => errorLabel(e, name)).join('、')}＞` : '';
+  const runs = st.runs > 0 ? ` ${st.runs}点 [${st.scoreAfter.away}-${st.scoreAfter.home}]` : '';
+  const pct = Math.round(st.expected * 100);
+  return `${padEnd(head, 22)} 【盗塁】${name(st.runnerId)} ${STEAL_LABEL[st.to]}${result}${extra}${others.length ? `（${others.join('、')}）` : ''}${errors}${runs}  (見込み${pct}%)`;
 }
 
 export function formatStageChange(c: StageChange, teamName: string, name: (id: string) => string): string {
@@ -84,19 +110,23 @@ export function formatGameLog(game: GameResult): string {
     .map((ev) =>
       ev.type === 'pa'
         ? formatPlateAppearance(ev.pa, name)
-        : formatStageChange(ev.change, game[ev.change.team].name, name),
+        : ev.type === 'steal'
+          ? formatSteal(ev.steal, name)
+          : formatStageChange(ev.change, game[ev.change.team].name, name),
     )
     .join('\n');
 }
 
+/** ラインスコア（計の欄に 得点・安打・失策） */
 export function formatLineScore(game: GameResult): string {
+  const box = computeBoxScore(game);
   const inningCells = Array.from({ length: Math.max(game.lineScore.away.length, game.lineScore.home.length, 9) }, (_, i) => padStart(String(i + 1), 3));
-  const row = (team: TeamEntry, runs: (number | null)[], total: number) =>
-    `${padEnd(team.name, 12)}${inningCells.map((_, i) => padStart(runs[i] === null ? 'x' : runs[i] === undefined ? '' : String(runs[i]), 3)).join('')} | ${padStart(String(total), 3)}`;
+  const row = (team: TeamEntry, runs: (number | null)[], total: number, hits: number, errors: number) =>
+    `${padEnd(team.name, 12)}${inningCells.map((_, i) => padStart(runs[i] === null ? 'x' : runs[i] === undefined ? '' : String(runs[i]), 3)).join('')} | ${[total, hits, errors].map((v) => padStart(String(v), 3)).join('')}`;
   return [
-    `${padEnd('', 12)}${inningCells.join('')} |   計`,
-    row(game.away, game.lineScore.away, game.score.away),
-    row(game.home, game.lineScore.home, game.score.home),
+    `${padEnd('', 12)}${inningCells.join('')} |   R  H  E`,
+    row(game.away, game.lineScore.away, game.score.away, box.away.hits, box.away.errors),
+    row(game.home, game.lineScore.home, game.score.home, box.home.hits, box.home.errors),
   ].join('\n');
 }
 
@@ -116,13 +146,16 @@ export function formatBoxScore(game: GameResult): string {
   for (const key of ['away', 'home'] as const) {
     const t = box[key];
     out.push(`■ ${game[key].name}`);
-    out.push(`  ${padEnd('打者', 16)} 打数 安打 本塁 打点 四球 三振`);
+    out.push(`  ${padEnd('打者', 16)} 打数 安打 本塁 打点 四球 三振 盗塁 盗死`);
     for (const b of t.batting) {
-      out.push(`  ${padEnd(`${b.slot + 1} ${name(b.playerId)}`, 16)} ${[b.ab, b.h, b.hr, b.rbi, b.bb, b.k].map((v) => padStart(String(v), 4)).join(' ')}`);
+      out.push(`  ${padEnd(`${b.slot + 1} ${name(b.playerId)}`, 16)} ${[b.ab, b.h, b.hr, b.rbi, b.bb, b.k, b.sb, b.cs].map((v) => padStart(String(v), 4)).join(' ')}`);
     }
     out.push(`  ${padEnd('投手', 16)} 投球回 球数 被安 失点 四球 奪三振`);
     for (const p of t.pitching) {
       out.push(`  ${padEnd(name(p.playerId), 16)} ${padStart(formatInnings(p.outs), 6)} ${[p.pitches, p.h, p.r, p.bb, p.k].map((v) => padStart(String(v), 4)).join(' ')}`);
+    }
+    if (t.fielding.length > 0) {
+      out.push(`  失策: ${t.fielding.map((f) => `${name(f.playerId)} ${f.e}`).join('、')}`);
     }
     out.push('');
   }

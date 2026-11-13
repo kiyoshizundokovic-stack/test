@@ -8,3 +8,5 @@ export * from './stats';
 export * from './format';
 export * from './balance';
 export * from './planEdit';
+export * from './fielding';
+export * from './steal';

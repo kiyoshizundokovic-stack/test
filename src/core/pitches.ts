@@ -13,7 +13,7 @@ export const PITCH_TOTAL_MAX = PITCH_RATING_MAX * PITCH_COUNT_MAX;
  * - 各評価値は PITCH_RATING_MIN〜MAX、合計は targetTotal（取りうる範囲に丸める）
  * @param pitchesPerCount 球種数決定の目安（合計 / この値 ≒ 球種数）
  */
-export function generatePitches(rng: Rng, targetTotal: number, pitchesPerCount = 12): Pitch[] {
+export function generatePitches(rng: Rng, targetTotal: number, pitchesPerCount = 6): Pitch[] {
   const total = Math.round(Math.min(PITCH_TOTAL_MAX, Math.max(PITCH_TOTAL_MIN, targetTotal)));
 
   // 合計を満たせる球種数の範囲

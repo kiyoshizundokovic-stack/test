@@ -1,14 +1,14 @@
 /**
  * バランス検証スクリプト（SPEC 9 フェーズ3）。
  * 同程度の能力のチーム同士で多数の試合を行い、1チーム1試合あたりの指標を目標値と比較する。
- *   npm run balance                    # 1000試合・シード1・平均総合力400
+ *   npm run balance                    # 1000試合・シード1・平均総合力500
  *   npm run balance -- 1000 7 600      # 試合数・シード・平均総合力
  */
 import { aggregate, BALANCE_TARGETS, isWithinTarget, runBalanceGames, type BalanceMetric } from '../src/core';
 
 const count = Number(process.argv[2] ?? 1000);
 const seed = Number(process.argv[3] ?? 1);
-const target = Number(process.argv[4] ?? 400);
+const target = Number(process.argv[4] ?? 500);
 
 const report = aggregate(runBalanceGames(seed, count, target));
 
@@ -34,4 +34,5 @@ console.log(`  打席 ${e.pa.toFixed(1)} / 安打 ${e.hits.toFixed(2)}（二塁�
 console.log(`  出塁率 ${e.obp.toFixed(3)} / 長打率 ${e.slg.toFixed(3)} / 併殺 ${e.doublePlays.toFixed(2)} / 犠飛 ${e.sacFlies.toFixed(2)}`);
 console.log(`  打球 ゴロ ${(e.groundBallRate * 100).toFixed(1)}% ライナー ${(e.lineDriveRate * 100).toFixed(1)}% フライ ${(e.flyBallRate * 100).toFixed(1)}%`);
 console.log(`  先発の平均投球回 ${(e.starterOuts / 3).toFixed(2)} / 登板投手数 ${e.pitchersUsed.toFixed(2)}`);
+console.log(`  盗塁企図 ${e.stealAttempts.toFixed(2)} / 盗塁成功 ${e.stolenBases.toFixed(2)}（成功率 ${((e.stolenBases / e.stealAttempts) * 100).toFixed(1)}%）/ 失策 ${e.errors.toFixed(2)}`);
 console.log(`  引き分け率 ${(e.drawRate * 100).toFixed(1)}% / サヨナラ率 ${(e.walkOffRate * 100).toFixed(1)}% / 後攻勝率 ${(e.homeWinRate * 100).toFixed(1)}%`);

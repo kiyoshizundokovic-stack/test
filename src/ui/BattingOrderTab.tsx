@@ -1,5 +1,18 @@
 import { useState } from 'react';
-import { fullName, moveBattingSlot, positionOf, POSITION_LABELS, swapBattingSlots, type GamePlan, type Player } from '../core';
+import {
+  fullName,
+  moveBattingSlot,
+  positionOf,
+  POSITION_LABELS,
+  setStealPolicy,
+  STEAL_POLICIES,
+  STEAL_POLICY_LABELS,
+  stealPolicyOf,
+  swapBattingSlots,
+  type GamePlan,
+  type Player,
+  type StealPolicy,
+} from '../core';
 import { BattingAbilities } from './abilities';
 
 interface Props {
@@ -25,7 +38,9 @@ export function BattingOrderTab({ plan, players, onChange }: Props) {
   return (
     <section className="card">
       <h2>打順</h2>
-      <p className="hint">2人を順にタップすると打順を入れ替えます。▲▼で1つずつ移動します。</p>
+      <p className="hint">
+        2人を順にタップすると打順を入れ替えます。▲▼で1つずつ移動します。盗塁は選手ごとに「禁止／通常（見込み成功率80%以上で企図）／積極（70%以上）」を選べます。
+      </p>
       <ol className="order-list">
         {stage.lineup.map((id, slot) => {
           const p = players.get(id)!;
@@ -43,6 +58,21 @@ export function BattingOrderTab({ plan, players, onChange }: Props) {
                 {fullName(p.name)}
                 <br />
                 <BattingAbilities p={p} />
+                <br />
+                <label className="steal-policy" onClick={(e) => e.stopPropagation()}>
+                  盗塁
+                  <select
+                    aria-label={`${fullName(p.name)}の盗塁の積極度`}
+                    value={stealPolicyOf(plan, id)}
+                    onChange={(e) => onChange(setStealPolicy(plan, id, e.target.value as StealPolicy))}
+                  >
+                    {STEAL_POLICIES.map((policy) => (
+                      <option key={policy} value={policy}>
+                        {STEAL_POLICY_LABELS[policy]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </span>
               <span className="moves">
                 <button

@@ -5,9 +5,9 @@ import { generateOpponentRoster } from '../team';
 import { simulateGame } from './engine';
 import { buildAutoPlan, validatePlan } from './plan';
 import { computeBoxScore } from './stats';
-import type { GameResult, PlateAppearance, TeamEntry } from './types';
+import type { GameResult, PlateAppearance, StealAttempt, TeamEntry } from './types';
 
-function makeTeam(rng: Rng, name: string, target = 400): TeamEntry {
+function makeTeam(rng: Rng, name: string, target = 500): TeamEntry {
   const players = generateOpponentRoster(rng, target);
   return { name, players, plan: buildAutoPlan(players) };
 }
@@ -21,6 +21,11 @@ function makeGames(count: number, seed = 1): GameResult[] {
 
 const pas = (g: GameResult): PlateAppearance[] =>
   g.events.flatMap((e) => (e.type === 'pa' ? [e.pa] : []));
+
+/** 状態を変える出来事（打席と盗塁）を順に並べたもの */
+type Play = PlateAppearance | StealAttempt;
+const plays = (g: GameResult): Play[] =>
+  g.events.flatMap<Play>((e) => (e.type === 'pa' ? [e.pa] : e.type === 'steal' ? [e.steal] : []));
 
 describe('試合エンジン', () => {
   it('同じシード・同じ入力なら同じ結果になる', () => {
@@ -40,10 +45,10 @@ describe('試合エンジン', () => {
       for (const side of ['away', 'home'] as const) {
         const sum = g.lineScore[side].reduce<number>((s, r) => s + (r ?? 0), 0);
         expect(sum).toBe(g.score[side]);
-        const fromPA = pas(g)
+        const fromPlays = plays(g)
           .filter((p) => (p.half === 'top') === (side === 'away'))
           .reduce((s, p) => s + p.runs, 0);
-        expect(fromPA).toBe(g.score[side]);
+        expect(fromPlays).toBe(g.score[side]);
       }
       const expected = g.score.away > g.score.home ? 'away' : g.score.home > g.score.away ? 'home' : 'draw';
       expect(g.winner).toBe(expected);
@@ -69,17 +74,17 @@ describe('試合エンジン', () => {
     const walkOffs = games.filter((g) => g.walkOff);
     expect(walkOffs.length).toBeGreaterThan(0);
     for (const g of walkOffs) {
-      const last = pas(g).at(-1)!;
+      const last = plays(g).at(-1)!;
       expect(last.inning).toBe(GAME_INNINGS);
       expect(last.half).toBe('bottom');
       expect(g.winner).toBe('home');
-      if (last.kind !== 'HR') expect(g.score.home - g.score.away).toBe(1);
+      if (!('kind' in last) || last.kind !== 'HR') expect(g.score.home - g.score.away).toBe(1);
     }
   });
 
-  it('各ハーフイニングは3アウトで終わり、走者状況が打席間で連続している', () => {
+  it('各ハーフイニングは3アウトで終わり、走者状況が打席・盗塁の間で連続している', () => {
     for (const g of games) {
-      const list = pas(g);
+      const list = plays(g);
       for (let i = 0; i < list.length; i++) {
         const pa = list[i]!;
         const next = list[i + 1];
@@ -99,12 +104,34 @@ describe('試合エンジン', () => {
     }
   });
 
-  it('打順は1〜9番を順に回り、イニングをまたいで引き継がれる', () => {
+  it('打順は1〜9番を順に回り、イニングをまたいで引き継がれる（盗塁死で終わった回の打者は次の回の先頭）', () => {
     for (const g of games) {
       for (const half of ['top', 'bottom'] as const) {
         const slots = pas(g).filter((p) => p.half === half).map((p) => p.battingSlot);
         slots.forEach((s, i) => expect(s).toBe(i % 9));
       }
+    }
+  });
+
+  it('盗塁とエラーが発生し、構造化データに記録される', () => {
+    const steals = games.flatMap((g) => g.events.flatMap((e) => (e.type === 'steal' ? [e.steal] : [])));
+    expect(steals.length).toBeGreaterThan(100);
+    expect(steals.some((s) => s.success)).toBe(true);
+    expect(steals.some((s) => !s.success)).toBe(true);
+    for (const s of steals) {
+      expect(s.policy).toBe('normal'); // 相手AIの作戦は全員「通常」
+      expect(s.expected).toBeGreaterThanOrEqual(0.8);
+      if (!s.success) expect(s.outsAfter).toBe(s.outsBefore + 1);
+    }
+    const errorPAs = games.flatMap((g) => pas(g)).filter((p) => p.errors.length > 0);
+    expect(errorPAs.length).toBeGreaterThan(50);
+    for (const p of errorPAs) {
+      expect(p.rbi).toBe(0); // エラーが絡んだプレーに打点はない
+      for (const e of p.errors) expect(['field', 'throw', 'receive']).toContain(e.action);
+    }
+    // 失策で出塁した打席は打者がアウトにならない
+    for (const p of errorPAs.filter((x) => x.kind === 'E')) {
+      expect(p.moves.find((m) => m.from === 0)?.to).toBeGreaterThanOrEqual(1);
     }
   });
 
@@ -137,7 +164,7 @@ describe('試合エンジン', () => {
       for (const side of ['away', 'home'] as const) {
         const def = side === 'away' ? 'home' : 'away';
         const outs = box[def].pitching.reduce((s, p) => s + p.outs, 0);
-        const halfInnings = pas(g).filter((p) => (p.half === 'top') === (side === 'away'));
+        const halfInnings = plays(g).filter((p) => (p.half === 'top') === (side === 'away'));
         expect(outs).toBe(halfInnings.reduce((s, p) => s + p.outsAfter - p.outsBefore, 0));
         const runsAllowed = box[def].pitching.reduce((s, p) => s + p.r, 0);
         expect(runsAllowed).toBe(g.score[side]);

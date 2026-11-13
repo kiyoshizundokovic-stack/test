@@ -22,9 +22,20 @@ export interface Stage {
   positions: Record<Position, string>;
 }
 
+/** 盗塁の積極度（SPEC 4.4） */
+export type StealPolicy = 'none' | 'normal' | 'aggressive';
+export const STEAL_POLICIES: readonly StealPolicy[] = ['none', 'normal', 'aggressive'];
+export const STEAL_POLICY_LABELS: Record<StealPolicy, string> = {
+  none: '盗塁禁止',
+  normal: '通常',
+  aggressive: '積極盗塁',
+};
+
 /** 試合前の作戦。stages[0] が先発、以降は球数上限に達するごとに次の段階へ移る */
 export interface GamePlan {
   stages: Stage[];
+  /** 選手ごとの盗塁の積極度。指定のない選手は 'normal' */
+  stealPolicy?: Record<string, StealPolicy>;
 }
 
 export interface TeamEntry {
@@ -46,7 +57,23 @@ export type PlayKind =
   | 'FC' // 一塁走者封殺・打者は一塁へ
   | 'LO' // ライナーアウト
   | 'FO' // フライアウト
-  | 'SF'; // 犠牲フライ
+  | 'SF' // 犠牲フライ
+  | 'E'; // 失策で出塁（打数1・安打0）
+
+/** 守備の動作（SPEC 3.4） */
+export type FieldingAction = 'field' | 'throw' | 'receive';
+export const FIELDING_ACTION_LABELS: Record<FieldingAction, string> = {
+  field: '捕球',
+  throw: '送球',
+  receive: '送球の捕球',
+};
+
+/** エラーの記録 */
+export interface ErrorRecord {
+  playerId: string;
+  position: Position;
+  action: FieldingAction;
+}
 
 /** 走者の動き。to: 1〜3 = 塁、4 = 生還、0 = アウト */
 export interface RunnerMove {
@@ -71,6 +98,8 @@ export interface PlateAppearance {
   fielderId?: string;
   pitches: number;
   moves: RunnerMove[];
+  /** この打席で起きたエラー（打球処理・送球） */
+  errors: ErrorRecord[];
   runs: number;
   rbi: number;
   /** 失点の責任投手（生還した走者ごと） */
@@ -92,7 +121,34 @@ export interface StageChange {
   positionChanges: { playerId: string; from: Position | null; to: Position }[];
 }
 
-export type GameEvent = { type: 'pa'; pa: PlateAppearance } | { type: 'stage'; change: StageChange };
+/** 盗塁の企図（SPEC 3.5）。打席の前に起きる */
+export interface StealAttempt {
+  inning: number;
+  half: Half;
+  runnerId: string;
+  pitcherId: string;
+  catcherId: string;
+  from: 1 | 2 | 3;
+  to: 2 | 3 | 4;
+  policy: StealPolicy;
+  /** 見込み成功率（実際の判定と同じ式） */
+  expected: number;
+  success: boolean;
+  outsBefore: number;
+  basesBefore: (string | null)[];
+  moves: RunnerMove[];
+  errors: ErrorRecord[];
+  runs: number;
+  runsChargedTo: string[];
+  outsAfter: number;
+  basesAfter: (string | null)[];
+  scoreAfter: { away: number; home: number };
+}
+
+export type GameEvent =
+  | { type: 'pa'; pa: PlateAppearance }
+  | { type: 'stage'; change: StageChange }
+  | { type: 'steal'; steal: StealAttempt };
 
 export interface GameResult {
   seed: number;

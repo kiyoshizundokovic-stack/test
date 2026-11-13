@@ -13,6 +13,7 @@ import {
   PLATE,
   VELOCITY_BASE_KMH,
   VELOCITY_MAX_KMH,
+  WISDOM_MAX,
   ZONE_WEIGHTS,
 } from '../config';
 import { pitchTotal } from '../overall';
@@ -43,19 +44,38 @@ export function pitcherForm(p: Player, pitchesThrown: number): PitcherForm {
 
 export type Step1Result = 'K' | 'BB' | BattedType;
 
-/** ステップ1の各結果の確率（テスト・バランス検証用に公開） */
-export function step1Probabilities(batter: Player, form: PitcherForm, catcher: Player) {
+/** 守備側の賢さ（投手と捕手のうち高い方） */
+export function batteryWisdom(pitcher: Player, catcher: Player): number {
+  return Math.max(pitcher.wisdom, catcher.wisdom);
+}
+
+/** 賢さの差（攻撃側 − 守備側。上限比。攻守の重みは1:1） */
+export function wisdomEdge(offense: number, defense: number): number {
+  return (offense - defense) / WISDOM_MAX;
+}
+
+/**
+ * ステップ1の各結果の確率（テスト・バランス検証用に公開）
+ * @param defenseWisdom 守備側の賢さ（投手と捕手の高い方）
+ */
+export function step1Probabilities(batter: Player, form: PitcherForm, defenseWisdom: number) {
   const b = batter.fielder;
-  const c = d(catcher.fielder.catching, FIELDER_ABILITY_MAX);
+  const M = FIELDER_ABILITY_MAX;
+  const edge = wisdomEdge(batter.wisdom, defenseWisdom);
   const k = PLATE.strikeout;
   const pK = clamp(
-    k.base + k.vel * (form.vel - BASELINE) + k.stuff * (form.stuff - BASELINE) - k.contact * d(b.contact, FIELDER_ABILITY_MAX) + k.catcher * c,
+    k.base +
+      k.vel * (form.vel - BASELINE) +
+      k.stuff * (form.stuff - BASELINE) -
+      k.contact * d(b.contact, M) -
+      k.eye * d(b.eye, M) -
+      k.wisdom * edge,
     k.min,
     k.max,
   );
   const w = PLATE.walk;
   const pBB = clamp(
-    w.base - w.control * (form.control - BASELINE) + w.eye * d(b.contact, FIELDER_ABILITY_MAX) - w.catcher * c,
+    w.base - w.control * (form.control - BASELINE) + w.eye * d(b.eye, M) + w.wisdom * edge,
     w.min,
     w.max,
   );
@@ -78,8 +98,8 @@ export function step1Probabilities(batter: Player, form: PitcherForm, catcher: P
   };
 }
 
-export function drawStep1(rng: Rng, batter: Player, form: PitcherForm, catcher: Player): Step1Result {
-  const p = step1Probabilities(batter, form, catcher);
+export function drawStep1(rng: Rng, batter: Player, form: PitcherForm, defenseWisdom: number): Step1Result {
+  const p = step1Probabilities(batter, form, defenseWisdom);
   const keys: Step1Result[] = ['K', 'BB', 'groundBall', 'lineDrive', 'flyBall'];
   return rng.weighted(keys, (key) => p[key]);
 }
@@ -88,7 +108,7 @@ export function drawStep1(rng: Rng, batter: Player, form: PitcherForm, catcher: 
 export function drawPitchCount(rng: Rng, result: Step1Result, form: PitcherForm, batter: Player): number {
   const conf = result === 'K' ? PITCHES_PER_PA.strikeout : result === 'BB' ? PITCHES_PER_PA.walk : PITCHES_PER_PA.inPlay;
   const factor =
-    1 + PITCHES_PER_PA.control * (BASELINE - form.control) + PITCHES_PER_PA.contact * d(batter.fielder.contact, FIELDER_ABILITY_MAX);
+    1 + PITCHES_PER_PA.control * (BASELINE - form.control) + PITCHES_PER_PA.eye * d(batter.fielder.eye, FIELDER_ABILITY_MAX);
   const mean = conf.extraMean * Math.max(0.3, factor);
   const trials = PITCHES_PER_PA.trials;
   const p = clamp(mean / trials, 0, 1);
@@ -111,16 +131,17 @@ export function drawZone(rng: Rng, type: BattedType): Position {
   return rng.weighted(POSITIONS, (pos) => w[pos]);
 }
 
-/** 打球がアウトになる確率 */
+/** 打球がアウトになる確率（守備者の賢さが小さく影響する） */
 export function outProbability(type: BattedType, zone: Position, batter: Player, fielder: Player): number {
   const f = fielder.fielder;
   const b = batter.fielder;
   const M = FIELDER_ABILITY_MAX;
+  const wis = FIELDING.wisdom * d(fielder.wisdom, WISDOM_MAX);
   if (type === 'groundBall') {
     if (isOutfield(zone)) return 0; // 内野を抜けた打球
     const g = FIELDING.groundBall;
     return clamp(
-      g.base + g.fielding * d(f.fielding, M) + g.arm * d(f.arm, M) - g.speed * d(b.speed, M) - g.contact * d(b.contact, M),
+      g.base + g.fielding * d(f.fielding, M) + g.arm * d(f.arm, M) - g.speed * d(b.speed, M) - g.contact * d(b.contact, M) + wis,
       g.min,
       g.max,
     );
@@ -128,29 +149,33 @@ export function outProbability(type: BattedType, zone: Position, batter: Player,
   if (type === 'lineDrive') {
     const l = FIELDING.lineDrive;
     return clamp(
-      l.base + l.catching * d(f.catching, M) + l.fielding * d(f.fielding, M) - l.contact * d(b.contact, M) - l.power * d(b.power, M),
+      l.base + l.catching * d(f.catching, M) + l.fielding * d(f.fielding, M) - l.contact * d(b.contact, M) - l.power * d(b.power, M) + wis,
       l.min,
       l.max,
     );
   }
   if (!isOutfield(zone)) {
     const i = FIELDING.infieldFly;
-    return clamp(i.base + i.catching * d(f.catching, M), i.min, i.max);
+    return clamp(i.base + i.catching * d(f.catching, M) + wis, i.min, i.max);
   }
   const o = FIELDING.outfieldFly;
   return clamp(
-    o.base + o.fielding * d(f.fielding, M) + o.catching * d(f.catching, M) - o.power * d(b.power, M) - o.contact * d(b.contact, M),
+    o.base + o.fielding * d(f.fielding, M) + o.catching * d(f.catching, M) - o.power * d(b.power, M) - o.contact * d(b.contact, M) + wis,
     o.min,
     o.max,
   );
 }
 
-/** 安打の塁打数（1〜3）。内野への打球は単打 */
+/** 安打の塁打数（1〜3）。内野への打球は単打。守備者の賢さが長打を小さく抑える */
 export function drawHitBases(rng: Rng, type: BattedType, zone: Position, batter: Player, fielder: Player): 1 | 2 | 3 {
   if (!isOutfield(zone)) return 1;
   const e = EXTRA_BASE[type];
   const M = FIELDER_ABILITY_MAX;
-  const adj = e.speed * d(batter.fielder.speed, M) - e.arm * d(fielder.fielder.arm, M) + ('power' in e ? e.power * d(batter.fielder.power, M) : 0);
+  const adj =
+    e.speed * d(batter.fielder.speed, M) -
+    e.arm * d(fielder.fielder.arm, M) +
+    ('power' in e ? e.power * d(batter.fielder.power, M) : 0) -
+    EXTRA_BASE.wisdom * d(fielder.wisdom, WISDOM_MAX);
   const pTriple = clamp(e.triple * (1 + 3 * d(batter.fielder.speed, M)), 0, 0.3);
   const pDouble = clamp(e.double + adj, 0, 0.8);
   const r = rng.next();

@@ -3,6 +3,16 @@ import { BASELINE, FIELDER_ABILITY_MAX, GAME_INNINGS, OUTS_PER_INNING, RUNNING }
 import { Rng } from '../rng';
 import type { Player } from '../types';
 import {
+  catchSteps,
+  doublePlaySteps,
+  forceAtSecondSteps,
+  groundOutSteps,
+  runFieldingChain,
+  throwSteps,
+  type FieldingStep,
+} from './fielding';
+import {
+  batteryWisdom,
   drawHitBases,
   drawPitchCount,
   drawStep1,
@@ -14,6 +24,7 @@ import {
 import { validatePlan } from './plan';
 import type { RuleKey } from './runnerTable';
 import { applyPlay, type Bases, type Runner } from './runners';
+import { decideSteal, executeSteal } from './steal';
 import {
   isOutfield,
   POSITIONS,
@@ -23,7 +34,9 @@ import {
   type PlateAppearance,
   type PlayKind,
   type Position,
+  type ErrorRecord,
   type StageChange,
+  type StealAttempt,
   type TeamEntry,
 } from './types';
 
@@ -124,16 +137,70 @@ export function simulateGame(away: TeamEntry, home: TeamEntry, seed: number): Ga
         const batter = player(off, offStage.lineup[slot]!);
         const pitcher = player(def, defStage.positions.P);
         const catcher = player(def, defStage.positions.C);
+        const offPlayer = (id: string) => player(off, id);
+        const defPlayer = (id: string) => player(def, id);
+        const lastHalf = half === 'bottom' && inning === GAME_INNINGS;
+
+        /** サヨナラの判定と得点の上限（本塁打以外は勝ち越しの1点まで） */
+        const capWalkOff = (scored: Runner[], homeRun: boolean): Runner[] => {
+          if (!lastHalf || score.home + scored.length <= score.away) return scored;
+          walkOff = true;
+          return homeRun ? scored : scored.slice(0, score.away - score.home + 1);
+        };
+
+        // ---- 盗塁（打席結果の判定より前。1打席につき1回まで） ----
+        if (bases.some((r) => r !== null)) {
+          const candidate = decideSteal(bases, off.entry.plan, pitcher, catcher, offPlayer);
+          if (candidate) {
+            const outsBefore = outs;
+            const basesBefore = bases.map((r) => r?.id ?? null);
+            const result = executeSteal(rng, candidate, { bases, outs }, defStage, defPlayer);
+            const scored = capWalkOff(result.scored, false);
+            score[offKey] += scored.length;
+            inningRuns += scored.length;
+            outs = result.outs;
+            bases = result.bases;
+            const steal: StealAttempt = {
+              inning,
+              half,
+              runnerId: candidate.runner.id,
+              pitcherId: pitcher.id,
+              catcherId: catcher.id,
+              from: candidate.from,
+              to: candidate.to,
+              policy: candidate.policy,
+              expected: candidate.expected,
+              success: result.success,
+              outsBefore,
+              basesBefore,
+              moves: result.moves,
+              errors: result.errors,
+              runs: scored.length,
+              runsChargedTo: scored.map((r) => r.pitcherId),
+              outsAfter: outs,
+              basesAfter: bases.map((r) => r?.id ?? null),
+              scoreAfter: { ...score },
+            };
+            events.push({ type: 'steal', steal });
+            if (walkOff) {
+              lineScore[offKey].push(inningRuns);
+              break game;
+            }
+            if (outs >= OUTS_PER_INNING) break; // 盗塁死で3アウト：打席は成立せず、次の回は同じ打者から
+          }
+        }
+
+        // ---- 打席 ----
         const thrown = pitchCounts.get(pitcher.id) ?? 0;
         const form = pitcherForm(pitcher, thrown);
-
-        const step1 = drawStep1(rng, batter, form, catcher);
+        const step1 = drawStep1(rng, batter, form, batteryWisdom(pitcher, catcher));
         const pitches = drawPitchCount(rng, step1, form, batter);
         pitchCounts.set(pitcher.id, thrown + pitches);
 
         let key: RuleKey;
         let zone: Position | 'HR' | undefined;
         let fielder: Player = catcher;
+        const errors: ErrorRecord[] = [];
         if (step1 === 'K' || step1 === 'BB') {
           key = step1;
         } else if (rng.next() < homeRunProbability(step1, batter, form)) {
@@ -145,13 +212,26 @@ export function simulateGame(away: TeamEntry, home: TeamEntry, seed: number): Ga
           fielder = player(def, defStage.positions[z]);
           const out = rng.next() < outProbability(step1, z, batter, fielder);
           if (out) {
+            let steps: FieldingStep[];
             if (step1 === 'groundBall') {
               const r1 = bases[0];
               if (r1 && outs < OUTS_PER_INNING - 1) {
                 key = rng.next() < doublePlayProbability(fielder, batter, player(off, r1.id)) ? 'DP' : 'FC';
-              } else key = 'GO';
-            } else if (step1 === 'lineDrive') key = 'LO';
-            else key = isOutfield(z) ? 'FO' : 'FO_IF';
+                steps = key === 'DP' ? doublePlaySteps(z) : forceAtSecondSteps(z);
+              } else {
+                key = 'GO';
+                steps = groundOutSteps(z);
+              }
+            } else {
+              key = step1 === 'lineDrive' ? 'LO' : isOutfield(z) ? 'FO' : 'FO_IF';
+              steps = catchSteps(step1, z);
+            }
+            // エラー判定（捕球 → 送球 → 受け手の捕球）
+            const chain = runFieldingChain(rng, steps, defStage, defPlayer);
+            if (chain) {
+              errors.push(chain.error);
+              key = key === 'DP' ? (chain.index >= 3 ? 'DP_E2' : 'FC_E') : key === 'FC' ? 'FC_E' : 'E';
+            }
           } else {
             const hit = drawHitBases(rng, step1, z, batter, fielder);
             key = hit === 3 ? '3B' : hit === 2 ? '2B' : isOutfield(z) ? '1B' : '1B_IF';
@@ -161,19 +241,16 @@ export function simulateGame(away: TeamEntry, home: TeamEntry, seed: number): Ga
         const batterRunner: Runner = { id: batter.id, pitcherId: pitcher.id };
         const basesBefore = bases.map((r) => r?.id ?? null);
         const outsBefore = outs;
-        const outcome = applyPlay(rng, key, { bases, outs }, batterRunner, fielder, (id) => player(off, id));
+        const throwFrom = zone !== undefined && zone !== 'HR' ? zone : 'C';
+        const throwCheck = (to: 2 | 3 | 4) => runFieldingChain(rng, throwSteps(throwFrom, to), defStage, defPlayer)?.error ?? null;
+        const outcome = applyPlay(rng, key, { bases, outs }, batterRunner, fielder, offPlayer, throwCheck);
+        errors.push(...outcome.errors);
 
-        let scored = outcome.scored;
-        // サヨナラ：本塁打以外は勝ち越し点まで
-        const lastHalf = half === 'bottom' && inning === GAME_INNINGS;
-        if (lastHalf && score.home + scored.length > score.away) {
-          walkOff = true;
-          if (key !== 'HR') scored = scored.slice(0, score.away - score.home + 1);
-        }
+        const scored = capWalkOff(outcome.scored, key === 'HR');
 
         let kind: PlayKind =
-          key === '1B_IF' ? '1B' : key === 'FO_IF' ? 'FO' : key;
-        if (key === 'FO' && outsBefore < 2 && scored.length > 0) kind = 'SF';
+          key === '1B_IF' ? '1B' : key === 'FO_IF' ? 'FO' : key === 'FC_E' || key === 'DP_E2' ? 'E' : key;
+        if (key === 'FO' && outsBefore < 2 && scored.length > 0 && errors.length === 0) kind = 'SF';
 
         score[offKey] += scored.length;
         inningRuns += scored.length;
@@ -194,8 +271,10 @@ export function simulateGame(away: TeamEntry, home: TeamEntry, seed: number): Ga
           ...(zone !== undefined && zone !== 'HR' ? { fielderId: fielder.id } : {}),
           pitches,
           moves: outcome.moves,
+          errors,
           runs: scored.length,
-          rbi: kind === 'DP' ? 0 : scored.length,
+          // 併殺打・エラーが絡んだプレーには打点を付けない
+          rbi: kind === 'DP' || errors.length > 0 ? 0 : scored.length,
           runsChargedTo: scored.map((r) => r.pitcherId),
           outsAfter: outs,
           basesAfter: bases.map((r) => r?.id ?? null),

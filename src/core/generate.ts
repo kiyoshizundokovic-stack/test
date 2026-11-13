@@ -5,12 +5,17 @@ import {
   FIELDER_ABILITY_MAX,
   FIELDER_ABILITY_MIN,
   OVERALL_MAX,
+  OVERALL_WEIGHTS,
   PLAYER_GENERATION,
+  QUICK_MAX,
+  QUICK_MIN,
   STAMINA_MAX,
   STAMINA_MIN,
   VELOCITY_BASE_KMH,
   VELOCITY_MAX_KMH,
   VELOCITY_MIN_KMH,
+  WISDOM_MAX,
+  WISDOM_MIN,
   type ArchetypeWeights,
 } from './config';
 import { fullName, generateUniqueName } from './names';
@@ -33,15 +38,32 @@ export interface GeneratePlayerOptions {
 
 type Slot = keyof ArchetypeWeights;
 const SLOTS: readonly Slot[] = [
-  'contact', 'power', 'speed', 'arm', 'fielding', 'catching',
-  'velocity', 'control', 'stamina', 'pitches',
+  'contact', 'power', 'speed', 'arm', 'fielding', 'catching', 'eye', 'steal',
+  'wisdom', 'velocity', 'quick', 'control', 'stamina', 'pitches',
 ];
 
-/** 各スロットの総合力への寄与範囲（球速は km/h−基準値、球種は合計値） */
+/** 各スロットの総合力への倍率 */
+function slotWeight(slot: Slot): number {
+  switch (slot) {
+    case 'wisdom': return OVERALL_WEIGHTS.wisdom;
+    case 'velocity': return OVERALL_WEIGHTS.velocity;
+    case 'quick': return OVERALL_WEIGHTS.quick;
+    case 'control': return OVERALL_WEIGHTS.control;
+    case 'stamina': return OVERALL_WEIGHTS.stamina;
+    case 'pitches': return OVERALL_WEIGHTS.pitches;
+    default: return OVERALL_WEIGHTS.fielder;
+  }
+}
+
+/** 各スロットの値の範囲（球速は km/h−基準値、球種は合計値。倍率をかける前の値） */
 function slotRange(slot: Slot, minStamina: number): { min: number; max: number } {
   switch (slot) {
+    case 'wisdom':
+      return { min: WISDOM_MIN, max: WISDOM_MAX };
     case 'velocity':
       return { min: VELOCITY_MIN_KMH - VELOCITY_BASE_KMH, max: VELOCITY_MAX_KMH - VELOCITY_BASE_KMH };
+    case 'quick':
+      return { min: QUICK_MIN, max: QUICK_MAX };
     case 'control':
       return { min: CONTROL_MIN, max: CONTROL_MAX };
     case 'stamina':
@@ -63,7 +85,7 @@ function generateId(rng: Rng): string {
 
 /**
  * 選手を1人生成する。
- * 1. 目標総合力 P を「平均 × 正規乱数」で決める（選手ごとのばらつき）
+ * 1. 目標総合力 P を「平均 × 正規乱数」で決める（選手ごとのばらつき。平均±40%に収める）
  * 2. タイプ（強打型・投手型など）を選び、各能力を「P の比率 × タイプ倍率 × 正規乱数」で決める
  * 3. 能力合計が P と一致するよう、タイプ倍率に比例した確率で各能力を ±1 ずつ微調整する
  */
@@ -76,7 +98,8 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
     Slot,
     { min: number; max: number }
   >;
-  const overallMin = SLOTS.reduce((s, k) => s + ranges[k].min, 0);
+  const weights = Object.fromEntries(SLOTS.map((s) => [s, slotWeight(s)])) as Record<Slot, number>;
+  const overallMin = SLOTS.reduce((s, k) => s + ranges[k].min * weights[k], 0);
 
   // 1. 目標総合力
   const target = Math.round(
@@ -91,8 +114,8 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
   const archetypeKey =
     options.archetype ?? rng.weighted(Object.keys(ARCHETYPES), (k) => ARCHETYPES[k]!.weight);
   const mult = ARCHETYPES[archetypeKey]!.mult;
-  // 倍率を「最大値で重み付けした平均が1」になるよう正規化
-  const norm = SLOTS.reduce((s, k) => s + mult[k] * ranges[k].max, 0) / OVERALL_MAX;
+  // 倍率を「総合力への最大寄与で重み付けした平均が1」になるよう正規化
+  const norm = SLOTS.reduce((s, k) => s + mult[k] * ranges[k].max * weights[k], 0) / OVERALL_MAX;
   const ratio = target / OVERALL_MAX;
 
   const values = {} as Record<Slot, number>;
@@ -102,12 +125,12 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
     values[slot] = Math.round(clamp(raw, min, max));
   }
 
-  // 3. 合計を目標に合わせる
-  let diff = target - SLOTS.reduce((s, k) => s + values[k], 0);
-  for (let guard = 0; diff !== 0 && guard < 10000; guard++) {
+  // 3. 総合力を目標に合わせる（能力値を1ずつ動かす。倍率3の能力は総合力が3動く）
+  let diff = target - SLOTS.reduce((s, k) => s + values[k] * weights[k], 0);
+  for (let guard = 0; diff !== 0 && guard < 20000; guard++) {
     const step = diff > 0 ? 1 : -1;
-    const movable = SLOTS.filter((k) =>
-      step > 0 ? values[k] < ranges[k].max : values[k] > ranges[k].min,
+    const movable = SLOTS.filter(
+      (k) => weights[k] <= Math.abs(diff) && (step > 0 ? values[k] < ranges[k].max : values[k] > ranges[k].min),
     );
     if (movable.length === 0) break;
     // 増やすときはタイプの得意能力ほど、減らすときは苦手能力ほど選ばれやすい
@@ -115,7 +138,7 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
       step > 0 ? mult[k] * ranges[k].max : ranges[k].max / mult[k],
     );
     values[slot] += step;
-    diff -= step;
+    diff -= step * weights[slot];
   }
 
   const id = generateId(rng);
@@ -132,9 +155,13 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
       arm: values.arm,
       fielding: values.fielding,
       catching: values.catching,
+      eye: values.eye,
+      steal: values.steal,
     },
+    wisdom: values.wisdom,
     pitcher: {
       velocityKmh: values.velocity + VELOCITY_BASE_KMH,
+      quick: values.quick,
       control: values.control,
       stamina: values.stamina,
       pitches,

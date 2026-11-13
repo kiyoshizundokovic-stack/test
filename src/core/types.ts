@@ -48,9 +48,13 @@ export interface FielderAbilities {
   fielding: number;
   /** 捕球 */
   catching: number;
+  /** 選球眼 */
+  eye: number;
+  /** 盗塁 */
+  steal: number;
 }
 
-export const FIELDER_ABILITY_KEYS = ['contact', 'power', 'speed', 'arm', 'fielding', 'catching'] as const;
+export const FIELDER_ABILITY_KEYS = ['contact', 'power', 'speed', 'arm', 'fielding', 'catching', 'eye', 'steal'] as const;
 export type FielderAbilityKey = (typeof FIELDER_ABILITY_KEYS)[number];
 
 export const FIELDER_ABILITY_LABELS: Record<FielderAbilityKey, string> = {
@@ -60,12 +64,16 @@ export const FIELDER_ABILITY_LABELS: Record<FielderAbilityKey, string> = {
   arm: '送球',
   fielding: '守備',
   catching: '捕球',
+  eye: '選眼',
+  steal: '盗塁',
 };
 
 /** 投手能力 */
 export interface PitcherAbilities {
   /** 球速（km/h。VELOCITY_MIN_KMH〜MAX）。能力値としては km/h − VELOCITY_BASE_KMH */
   velocityKmh: number;
+  /** クイック（QUICK_MIN〜MAX） */
+  quick: number;
   /** コントロール */
   control: number;
   /** スタミナ（投げられる球数そのもの） */
@@ -83,6 +91,8 @@ export interface Player {
   id: string;
   name: PlayerName;
   fielder: FielderAbilities;
+  /** 賢さ（全選手共通。WISDOM_MIN〜MAX） */
+  wisdom: number;
   pitcher: PitcherAbilities;
   /** 特殊能力（将来の拡張用。現在は常に空配列） */
   traits: string[];

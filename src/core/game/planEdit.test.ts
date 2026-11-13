@@ -12,8 +12,10 @@ import {
   playersOnField,
   removeStage,
   setEntrantSlot,
+  setStealPolicy,
   swapBattingSlots,
 } from './planEdit';
+import { stealPolicyOf } from './steal';
 import type { GamePlan } from './types';
 
 const players = generateOpponentRoster(new Rng(21), 400); // 12人
@@ -113,6 +115,21 @@ describe('作戦の編集', () => {
     expect(plan.stages).toHaveLength(3);
     expect(validatePlan(plan, players)).toEqual([]);
     expect(removeStage(base, 0)).toBe(base);
+  });
+
+  it('盗塁の積極度：初期値は通常、設定しても他の編集で失われない', () => {
+    const id = base.stages[0]!.lineup[0]!;
+    expect(stealPolicyOf(base, id)).toBe('normal');
+    let plan = setStealPolicy(base, id, 'aggressive');
+    expect(stealPolicyOf(plan, id)).toBe('aggressive');
+    plan = swapBattingSlots(plan, 0, 1);
+    plan = assignPosition(plan, 0, 'SS', plan.stages[0]!.positions['2B']);
+    plan = addStage(plan, players);
+    expect(stealPolicyOf(plan, id)).toBe('aggressive');
+    plan = setStealPolicy(plan, id, 'none');
+    expect(stealPolicyOf(plan, id)).toBe('none');
+    plan = setStealPolicy(plan, id, 'normal');
+    expect(plan.stealPolicy).toBeUndefined(); // 通常は既定値なので記録しない
   });
 
   it('編集操作は元の作戦を変更しない', () => {

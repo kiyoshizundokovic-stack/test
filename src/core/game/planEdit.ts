@@ -10,11 +10,23 @@
  */
 import type { Player } from '../types';
 import { pitchingScore } from './plan';
-import { POSITIONS, type GamePlan, type Position, type Stage } from './types';
+import { POSITIONS, type GamePlan, type Position, type Stage, type StealPolicy } from './types';
 
 const clonePlan = (plan: GamePlan): GamePlan => ({
   stages: plan.stages.map((s) => ({ lineup: [...s.lineup], positions: { ...s.positions } })),
+  ...(plan.stealPolicy ? { stealPolicy: { ...plan.stealPolicy } } : {}),
 });
+
+/** 選手の盗塁の積極度を設定する（「通常」は既定値なので記録から外す） */
+export function setStealPolicy(plan: GamePlan, playerId: string, policy: StealPolicy): GamePlan {
+  const next = clonePlan(plan);
+  const map = { ...(next.stealPolicy ?? {}) };
+  if (policy === 'normal') delete map[playerId];
+  else map[playerId] = policy;
+  if (Object.keys(map).length > 0) next.stealPolicy = map;
+  else delete next.stealPolicy;
+  return next;
+}
 
 /** 段階に出場している選手（守備位置に就いている9人） */
 export function playersOnField(stage: Stage): string[] {

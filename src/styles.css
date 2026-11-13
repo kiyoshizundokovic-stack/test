@@ -76,7 +76,7 @@ button, select { font: inherit; color: inherit; }
 .order-row:last-child { border-bottom: 0; }
 .order-row.selected { background: var(--accent-weak); }
 .order-row .slot { font-weight: 700; text-align: right; }
-.order-row .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-row .name { min-width: 0; overflow-wrap: anywhere; }
 .order-row .moves { display: flex; gap: 4px; }
 
 .pos-badge {
@@ -85,7 +85,8 @@ button, select { font: inherit; color: inherit; }
 }
 .pos-badge.pitcher { background: var(--accent-weak); color: var(--accent); }
 
-.abilities { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.abilities { font-size: 12px; color: var(--muted); }
+.abilities > span { white-space: nowrap; display: inline-block; margin-right: 0.45em; }
 .abilities b { color: var(--text); font-weight: 600; }
 
 .stage-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
@@ -113,3 +114,6 @@ button, select { font: inherit; color: inherit; }
 .compact-order { margin: 0; padding-left: 0; list-style: none; font-size: 14px; columns: 2; column-gap: 16px; }
 .compact-order li { break-inside: avoid; }
 .compact-order .entered { color: var(--accent); font-weight: 600; }
+
+.steal-policy { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.steal-policy select { min-height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 2px 6px; font-size: 13px; }

@@ -70,8 +70,10 @@ export const MIN_ROSTER_SIZE = 9;
 export const INITIAL_POINTS = 500;
 export const INITIAL_LIFE = 3;
 export const LIFE_PRICE = 1000;
-/** 勝利ポイント = 相手選手の総合力の平均 × この値（端数切り捨て） */
+/** 勝利ポイント = 相手選手の総合力の平均 × この値（端数は WIN_POINT_ROUNDING で処理） */
 export const WIN_POINT_RATIO = 1 / 10;
+/** 勝利ポイントの端数処理 */
+export const WIN_POINT_ROUNDING: 'floor' | 'round' | 'ceil' = 'floor';
 
 /** 選手生成 */
 export const PLAYER_GENERATION = {

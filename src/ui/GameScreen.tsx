@@ -18,7 +18,11 @@ import {
 
 interface Props {
   game: GameResult;
+  /** 試合画面を出る（試合終了後のボタン） */
   onBack: () => void;
+  backLabel?: string;
+  /** 試合途中で出るボタンの文言（省略時は試合途中では出せない） */
+  skipLabel?: string;
 }
 
 interface LogGroup {
@@ -29,7 +33,7 @@ interface LogGroup {
 }
 
 /** 試合画面（SPEC 8-5）：スコアボード＋ログ。速度切替は 1打席ずつ／1イニングずつ／結果まで */
-export function GameScreen({ game, onBack }: Props) {
+export function GameScreen({ game, onBack, backLabel = '作戦設定に戻る', skipLabel }: Props) {
   const [shown, setShown] = useState(0);
   const names = useMemo(() => {
     const m = new Map([...game.away.players, ...game.home.players].map((p) => [p.id, fullName(p.name)]));
@@ -101,7 +105,7 @@ export function GameScreen({ game, onBack }: Props) {
               最初から見る
             </button>
             <button className="btn btn-primary" onClick={onBack}>
-              作戦設定に戻る
+              {backLabel}
             </button>
           </div>
         </section>
@@ -124,9 +128,9 @@ export function GameScreen({ game, onBack }: Props) {
         ))}
       </section>
 
-      {!state.finished && (
+      {!state.finished && skipLabel && (
         <button className="btn back-link" onClick={onBack}>
-          作戦設定に戻る（この試合は破棄）
+          {skipLabel}
         </button>
       )}
     </div>

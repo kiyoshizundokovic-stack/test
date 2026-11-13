@@ -50,7 +50,7 @@ export function playLabel(pa: PlateAppearance): string {
     case '3B': return `${zs}三塁打`;
     case 'GO': return `${zs}ゴロ`;
     case 'DP': return `${zs}ゴロ併殺打`;
-    case 'FC': return `${zs}ゴロ（一塁走者封殺）`;
+    case 'FC': return `${zs}ゴロ`; // 一塁走者の封殺は走者の動き（「〇〇アウト」）で表す
     case 'LO': return `${zs}直`;
     case 'FO': return `${zs}飛`;
     case 'SF': return `${zs}犠飛`;
@@ -65,8 +65,24 @@ export function errorLabel(err: ErrorRecord, name: (id: string) => string): stri
 
 const BASE_NAME = ['', '一塁', '二塁', '三塁'];
 
+/** 打席・盗塁の前の状況（例：「3回裏 一死一二塁」） */
+export function situationLabel(play: { inning: number; half: 'top' | 'bottom'; outsBefore: number; basesBefore: (string | null)[] }): string {
+  return `${play.inning}回${play.half === 'top' ? '表' : '裏'} ${OUT_LABEL[play.outsBefore]}${basesLabel(play.basesBefore)}`;
+}
+
+/** 打席の内容（状況・球数を除く。画面表示用） */
+export function describePlateAppearance(pa: PlateAppearance, name: (id: string) => string): string {
+  const runnerText = pa.moves
+    .filter((m) => m.from !== 0 && m.to !== m.from)
+    .map((m) => `${name(m.runnerId)}${m.to === 4 ? '生還' : m.to === 0 ? 'アウト' : `${BASE_NAME[m.to]}へ`}`);
+  const runs = pa.runs > 0 ? ` ${pa.runs}点` : '';
+  const runners = runnerText.length > 0 ? `（${runnerText.join('、')}）` : '';
+  const errors = pa.errors.length > 0 ? ` ＜${pa.errors.map((e) => errorLabel(e, name)).join('、')}＞` : '';
+  return `${pa.battingSlot + 1}番 ${name(pa.batterId)}：${playLabel(pa)}${runners}${errors}${runs}`;
+}
+
 export function formatPlateAppearance(pa: PlateAppearance, name: (id: string) => string): string {
-  const head = `${pa.inning}回${pa.half === 'top' ? '表' : '裏'} ${OUT_LABEL[pa.outsBefore]}${basesLabel(pa.basesBefore)}`;
+  const head = situationLabel(pa);
   const runnerText = pa.moves
     .filter((m) => m.from !== 0 && m.to !== m.from)
     .map((m) => `${name(m.runnerId)}${m.to === 4 ? '生還' : m.to === 0 ? 'アウト' : `${BASE_NAME[m.to]}へ`}`);
@@ -78,8 +94,13 @@ export function formatPlateAppearance(pa: PlateAppearance, name: (id: string) =>
 
 const STEAL_LABEL: Record<2 | 3 | 4, string> = { 2: '二盗', 3: '三盗', 4: '本盗' };
 
-export function formatSteal(st: StealAttempt, name: (id: string) => string): string {
-  const head = `${st.inning}回${st.half === 'top' ? '表' : '裏'} ${OUT_LABEL[st.outsBefore]}${basesLabel(st.basesBefore)}`;
+/** 選手交代の内容（画面表示用） */
+export function describeStageChange(c: StageChange, teamName: string, name: (id: string) => string): string {
+  return formatStageChange(c, teamName, name).replace(/^\S+ /, '');
+}
+
+/** 盗塁の内容（状況を除く。画面表示用） */
+export function describeSteal(st: StealAttempt, name: (id: string) => string): string {
   const result = st.success ? '成功' : '失敗（盗塁死）';
   const others = st.moves
     .filter((m) => m.runnerId !== st.runnerId && m.to !== m.from)
@@ -87,9 +108,14 @@ export function formatSteal(st: StealAttempt, name: (id: string) => string): str
   const self = st.moves.find((m) => m.runnerId === st.runnerId);
   const extra = self && self.to !== st.to && self.to !== 0 ? `、${self.to === 4 ? '生還' : `${BASE_NAME[self.to]}へ`}` : '';
   const errors = st.errors.length > 0 ? ` ＜${st.errors.map((e) => errorLabel(e, name)).join('、')}＞` : '';
-  const runs = st.runs > 0 ? ` ${st.runs}点 [${st.scoreAfter.away}-${st.scoreAfter.home}]` : '';
+  const runs = st.runs > 0 ? ` ${st.runs}点` : '';
   const pct = Math.round(st.expected * 100);
-  return `${padEnd(head, 22)} 【盗塁】${name(st.runnerId)} ${STEAL_LABEL[st.to]}${result}${extra}${others.length ? `（${others.join('、')}）` : ''}${errors}${runs}  (見込み${pct}%)`;
+  return `【盗塁】${name(st.runnerId)} ${STEAL_LABEL[st.to]}${result}${extra}${others.length ? `（${others.join('、')}）` : ''}${errors}${runs}（見込み${pct}%）`;
+}
+
+export function formatSteal(st: StealAttempt, name: (id: string) => string): string {
+  const score = st.runs > 0 ? ` [${st.scoreAfter.away}-${st.scoreAfter.home}]` : '';
+  return `${padEnd(situationLabel(st), 22)} ${describeSteal(st, name)}${score}`;
 }
 
 export function formatStageChange(c: StageChange, teamName: string, name: (id: string) => string): string {

@@ -117,3 +117,52 @@ button, select { font: inherit; color: inherit; }
 
 .steal-policy { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 4px; }
 .steal-policy select { min-height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 2px 6px; font-size: 13px; }
+
+/* ---- 試合画面 ---- */
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.game-sticky {
+  position: sticky; top: 0; z-index: 2; background: var(--bg);
+  padding: 8px 0; margin: -8px 0 8px; border-bottom: 1px solid var(--border);
+}
+.scoreboard-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.scoreboard { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+.scoreboard th, .scoreboard td { padding: 4px 2px; text-align: center; min-width: 20px; }
+.scoreboard thead th { color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); }
+.scoreboard .team-col { text-align: left; padding-left: 8px; white-space: nowrap; font-weight: 600; min-width: 60px; }
+.scoreboard .total { border-left: 1px solid var(--border); min-width: 26px; font-weight: 600; }
+.scoreboard .runs { font-size: 15px; }
+.scoreboard td.current { background: var(--accent-weak); color: var(--accent); font-weight: 700; }
+.situation { display: flex; align-items: center; gap: 12px; padding: 8px 4px 0; }
+.situation-text { min-width: 0; }
+.diamond { width: 48px; height: 36px; flex: none; }
+.diamond .base { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+.diamond .base.on { fill: var(--accent); stroke: var(--accent); }
+.outs { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; }
+.out { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--muted); display: inline-block; }
+.out.on { background: var(--danger); border-color: var(--danger); }
+.replay-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+.replay-controls .btn { padding: 6px 4px; }
+.log-group + .log-group { margin-top: 10px; }
+.log-head { font-size: 13px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
+.log-list { list-style: none; margin: 0; padding: 0; }
+.log-line { padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 14px; display: flex; flex-direction: column; }
+.log-line:last-child { border-bottom: 0; }
+.log-situation { font-size: 11px; color: var(--muted); }
+.log-score .log-text { font-weight: 600; }
+.log-runs { color: var(--accent); }
+.log-error .log-text { color: var(--danger); }
+.log-change { color: var(--muted); font-size: 13px; }
+.log-line.latest { background: var(--accent-weak); border-radius: 6px; padding-left: 6px; padding-right: 6px; }
+.result-card h2 { font-size: 17px; }
+.result-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+.table-scroll { overflow-x: auto; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+.stats-table caption { text-align: left; font-weight: 600; padding: 4px 0; }
+.stats-table th, .stats-table td { padding: 3px 4px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.stats-table th[scope='row'], .stats-table thead th:first-child { text-align: left; }
+.stats-table thead th { color: var(--muted); font-weight: 500; }
+.back-link { width: 100%; margin-top: 4px; }
+.start-bar { position: sticky; bottom: 0; padding: 8px 0 12px; background: var(--bg); }
+.start-bar .btn { width: 100%; min-height: 44px; }

@@ -170,7 +170,7 @@ button, select { font: inherit; color: inherit; }
 .stats-table th[scope='row'], .stats-table thead th:first-child { text-align: left; }
 .stats-table thead th { color: var(--muted); font-weight: 500; }
 .back-link { width: 100%; margin-top: 4px; }
-.start-bar { position: sticky; bottom: 0; padding: 8px 0 max(12px, env(safe-area-inset-bottom)); background: var(--bg); }
+.start-bar { position: sticky; bottom: 0; z-index: 10; padding: 8px 0 max(12px, env(safe-area-inset-bottom)); background: var(--bg); }
 .start-bar .btn { width: 100%; min-height: 44px; }
 
 /* ---- 選手一覧・ゲーム進行 ---- */
@@ -229,3 +229,25 @@ button, select { font: inherit; color: inherit; }
 .rename-form input { width: 7em; min-height: 34px; border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; background: var(--surface); }
 .detail-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .error-text { color: var(--danger); }
+
+/* ---- 投手の一覧表 ---- */
+.pitcher-table-open { margin-top: 6px; min-height: 34px; font-size: 13px; }
+.pos-row-wide { grid-column: 1 / -1; min-width: 0; }
+.pitcher-table-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 8px; margin-top: 4px; }
+.pitcher-table-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pitcher-table-head .btn { flex: none; white-space: nowrap; }
+.pitcher-table-scroll { max-height: 70vh; overflow: auto; }
+.pitcher-table { border-collapse: separate; border-spacing: 0; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 720px; width: 100%; }
+.pitcher-table th, .pitcher-table td { padding: 6px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: right; background: var(--surface); }
+.pitcher-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-2); }
+.pitcher-table .sticky-col { position: sticky; left: 0; z-index: 1; text-align: left; box-shadow: 1px 0 0 var(--border); white-space: normal; min-width: 6.5em; max-width: 8em; }
+.pitcher-table .sticky-col .badge-stock { margin-left: 0; }
+.pitcher-table .sticky-col .note { display: block; font-size: 11px; font-weight: 400; }
+.pitcher-table thead .sticky-col { z-index: 3; }
+.pitcher-table td.placement, .pitcher-table td.pitch-list, .pitcher-table th.left { text-align: left; }
+.pitcher-table tbody tr { cursor: pointer; }
+.pitcher-table tr.current th, .pitcher-table tr.current td { background: var(--accent-weak); }
+.pitcher-table tr.disabled th, .pitcher-table tr.disabled td { color: var(--muted); opacity: 0.55; cursor: not-allowed; }
+.th-sort { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; min-height: 28px; }
+.row-pick { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-align: left; min-height: 28px; }
+.row-pick:disabled { color: inherit; cursor: inherit; }

@@ -29,6 +29,7 @@
 - `npm run balance -- [試合数] [seed] [平均総合力]` … バランス検証（目標値との比較）。config の係数を変えたら必ず実行する
 - `npm run verify:steals -- [試合数] [seed]` … 盗塁の検証（積極度・能力帯ごとの企図数・成功率）
 - `npm run verify:errors -- [試合数] [seed]` … エラーの検証（捕球・送球をそろえたチームの能力帯・守備位置ごとのエラー数）
+- `npm run verify:fielder-speed -- [試合数] [seed]` … 守備者の走力（守備範囲）の検証（外野手・内野手の走力だけを変えたときの失点の比較）
 - `npm run run-sim -- [ラン数] [開始seed]` … ローグライク進行の通しシミュレーション（簡単な方針で自動プレイし、到達試合数・完走率を集計）
 - `npm run balance-report [-- quick]` … 難易度のバランス検証一式（作戦の効果・戦力差・先発投手・ローグライク全体・調整案の比較）を実行し `docs/balance-report.md` に書き出す（数分かかる。quick は試行回数1/5で書き出さない）
 - `npm run campaign-report [-- quick]` … 繰り返しプレイ（ストックを持ち越すボット）の難易度検証。初回プレイの到達試合数・初完走までのプレイ回数を条件ごとに測り `docs/campaign-report.md` に書き出す（4並列で十数分。quick は書き出さない）
@@ -46,4 +47,4 @@
 - `.github/workflows/deploy.yml` … テスト・型チェック・ビルドと GitHub Pages への公開（main への push 時）
 - `src/App.tsx`, `src/main.tsx`, `src/styles.css` … React UI のエントリ（セーブデータの読み込み・自動保存）
 - `src/storage/` … IndexedDB への保存（UI 層。core からは使わない）
-- `src/ui/` … 画面コンポーネント（TitleScreen＝タイトル・データの入出力、PlayScreen＝進行中のプレイ、StockScreens＝ストック一覧・ニューゲームの選手選び・終了時の選択、StrategyEditor＝作戦設定、GameScreen＝試合画面、RunScreens＝ホーム・結果と補強・ボス報酬・終了、PlayerCard＝選手表示 など）
+- `src/ui/` … 画面コンポーネント（TitleScreen＝タイトル・データの入出力、PlayScreen＝進行中のプレイ、StockScreens＝ストック一覧・ニューゲームの選手選び・終了時の選択、StrategyEditor＝作戦設定、PitcherTable＝投手の一覧表、GameScreen＝試合画面、RunScreens＝ホーム・結果と補強・ボス報酬・終了、PlayerCard＝選手表示 など）

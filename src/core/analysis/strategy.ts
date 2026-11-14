@@ -26,6 +26,7 @@ const OUTFIELD = new Set<Position>(['LF', 'CF', 'RF']);
 
 /**
  * 守備位置 pos での守備の価値（試合エンジンの式の係数を、その位置に飛ぶ打球の割合で重み付けした近似値）。
+ * 守備者の走力（守備範囲。外野で大きめ）も含む。
  * アウト率への寄与に加え、エラー（捕球・送球）と捕手の盗塁阻止も含める。
  */
 export function fieldingValue(p: Player, pos: FieldPos): number {
@@ -36,14 +37,14 @@ export function fieldingValue(p: Player, pos: FieldPos): number {
   const gb = BATTED_MIX.groundBall * zoneShare('groundBall', pos);
   v += OUTFIELD.has(pos)
     ? gb * 0.1 * n(f.arm)
-    : gb * (0.3 * n(f.fielding) + 0.2 * n(f.arm) + 0.04 * wis + 0.12 * n(f.catching) + 0.08 * n(f.arm));
+    : gb * (0.3 * n(f.fielding) + 0.08 * n(f.speed) + 0.2 * n(f.arm) + 0.04 * wis + 0.12 * n(f.catching) + 0.08 * n(f.arm));
   // ライナー：捕球（＋守備）
   const ld = BATTED_MIX.lineDrive * zoneShare('lineDrive', pos);
-  v += ld * (0.3 * n(f.catching) + 0.15 * n(f.fielding) + 0.04 * wis);
+  v += ld * (0.3 * n(f.catching) + 0.15 * n(f.fielding) + (OUTFIELD.has(pos) ? 0.1 : 0.04) * n(f.speed) + 0.04 * wis);
   // フライ：外野は守備・捕球と長打の抑制（送球）、内野は捕球
   const fb = BATTED_MIX.flyBall * zoneShare('flyBall', pos);
   v += OUTFIELD.has(pos)
-    ? fb * (0.25 * n(f.fielding) + 0.2 * n(f.catching) + 0.04 * wis + 0.15 * n(f.arm))
+    ? fb * (0.25 * n(f.fielding) + 0.18 * n(f.speed) + 0.2 * n(f.catching) + 0.04 * wis + 0.15 * n(f.arm))
     : fb * 0.1 * n(f.catching);
   // 一塁：内野ゴロの送球を受ける
   if (pos === '1B') v += BATTED_MIX.groundBall * 0.6 * 0.06 * n(f.catching);

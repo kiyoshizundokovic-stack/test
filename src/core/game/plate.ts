@@ -141,7 +141,13 @@ export function outProbability(type: BattedType, zone: Position, batter: Player,
     if (isOutfield(zone)) return 0; // 内野を抜けた打球
     const g = FIELDING.groundBall;
     return clamp(
-      g.base + g.fielding * d(f.fielding, M) + g.arm * d(f.arm, M) - g.speed * d(b.speed, M) - g.contact * d(b.contact, M) + wis,
+      g.base +
+        g.fielding * d(f.fielding, M) +
+        g.fielderSpeed * d(f.speed, M) +
+        g.arm * d(f.arm, M) -
+        g.speed * d(b.speed, M) -
+        g.contact * d(b.contact, M) +
+        wis,
       g.min,
       g.max,
     );
@@ -149,7 +155,13 @@ export function outProbability(type: BattedType, zone: Position, batter: Player,
   if (type === 'lineDrive') {
     const l = FIELDING.lineDrive;
     return clamp(
-      l.base + l.catching * d(f.catching, M) + l.fielding * d(f.fielding, M) - l.contact * d(b.contact, M) - l.power * d(b.power, M) + wis,
+      l.base +
+        l.catching * d(f.catching, M) +
+        l.fielding * d(f.fielding, M) +
+        (isOutfield(zone) ? l.fielderSpeed.outfield : l.fielderSpeed.infield) * d(f.speed, M) -
+        l.contact * d(b.contact, M) -
+        l.power * d(b.power, M) +
+        wis,
       l.min,
       l.max,
     );
@@ -160,7 +172,13 @@ export function outProbability(type: BattedType, zone: Position, batter: Player,
   }
   const o = FIELDING.outfieldFly;
   return clamp(
-    o.base + o.fielding * d(f.fielding, M) + o.catching * d(f.catching, M) - o.power * d(b.power, M) - o.contact * d(b.contact, M) + wis,
+    o.base +
+      o.fielding * d(f.fielding, M) +
+      o.fielderSpeed * d(f.speed, M) +
+      o.catching * d(f.catching, M) -
+      o.power * d(b.power, M) -
+      o.contact * d(b.contact, M) +
+      wis,
     o.min,
     o.max,
   );

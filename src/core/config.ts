@@ -65,6 +65,11 @@ export const OVERALL_MAX =
 
 /** チーム */
 export const INITIAL_ROSTER_SIZE = 9;
+/**
+ * 自動生成する初期選手のうち、球数（スタミナ）を保証する人数と下限（相手チームの先発投手と同じ基準）。
+ * 能力のタイプは指定しない（投手型に限らない）ので、総合力の分布は変わらない
+ */
+export const INITIAL_STAMINA_GUARANTEE = { count: 1, minStamina: 100 } as const;
 export const MAX_ROSTER_SIZE = 12;
 export const MIN_ROSTER_SIZE = 9;
 export const INITIAL_POINTS = 500;
@@ -232,18 +237,32 @@ export const HOME_RUN = {
 
 /**
  * 打球がアウトになる確率（守備者の能力 vs 打者）。
+ * 守備者の走力（fielderSpeed）を加えたのに合わせて、打者側の係数（ゴロの走力・ライナーのミート・外野フライのパワーとミート）を
+ * 同じだけ大きくし、攻守が同じだけ成長したときに成績が変わらないようにしている（仕様変更3）。
  * wisdom は守備者の賢さ（BASELINE との差）でアウト率を上げる小さな補正（SPEC 3.2）
  */
 export const FIELDING = {
   wisdom: 0.04,
-  /** 内野ゴロ：守備力（到達）＋送球 vs 打者の走力・ミート（打球の強さ） */
-  groundBall: { base: 0.83, fielding: 0.3, arm: 0.2, speed: 0.3, contact: 0.2, min: 0.4, max: 0.95 },
-  /** ライナー：捕球（＋守備力） vs 打者のミート・パワー */
-  lineDrive: { base: 0.39, catching: 0.3, fielding: 0.15, contact: 0.25, power: 0.2, min: 0.08, max: 0.7 },
+  /**
+   * 内野ゴロ：守備力（到達）＋送球 vs 打者の走力・ミート（打球の強さ）。
+   * fielderSpeed は守備者の走力（到達・守備範囲。内野は小さめ、守備力より小さい）
+   */
+  groundBall: { base: 0.83, fielding: 0.3, fielderSpeed: 0.08, arm: 0.2, speed: 0.38, contact: 0.2, min: 0.4, max: 0.95 },
+  /** ライナー：捕球（＋守備力・守備者の走力。走力は内野・外野で分ける） vs 打者のミート・パワー */
+  lineDrive: {
+    base: 0.39,
+    catching: 0.3,
+    fielding: 0.15,
+    fielderSpeed: { infield: 0.04, outfield: 0.1 },
+    contact: 0.32,
+    power: 0.2,
+    min: 0.08,
+    max: 0.7,
+  },
   /** 内野フライ */
   infieldFly: { base: 0.96, catching: 0.1, min: 0.85, max: 0.995 },
-  /** 外野フライ：守備力（到達）＋捕球 vs 打者のパワー・ミート */
-  outfieldFly: { base: 0.865, fielding: 0.25, catching: 0.2, power: 0.25, contact: 0.2, min: 0.55, max: 0.97 },
+  /** 外野フライ：守備力（到達）＋守備者の走力（到達。外野は大きめ、守備力より小さい）＋捕球 vs 打者のパワー・ミート */
+  outfieldFly: { base: 0.865, fielding: 0.25, fielderSpeed: 0.18, catching: 0.2, power: 0.35, contact: 0.28, min: 0.55, max: 0.97 },
 } as const;
 
 /** 安打の種類（単打/二塁打/三塁打）。wisdom は守備者の賢さで長打を抑える小さな補正 */

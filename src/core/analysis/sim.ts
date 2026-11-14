@@ -7,13 +7,12 @@ import { INITIAL_LIFE, INITIAL_POINTS, INITIAL_ROSTER_SIZE, LIFE_PRICE, MAX_ROST
 import { simulateGame } from '../game/engine';
 import { buildAutoPlan } from '../game/plan';
 import type { GamePlan, TeamEntry } from '../game/types';
-import { generatePlayers } from '../generate';
 import { fullName } from '../names';
 import { calcOverall } from '../overall';
 import { Rng } from '../rng';
 import { idCounter } from '../run/ids';
 import { applyBossRewardToPlayer } from '../run/run';
-import { generateOpponentRoster } from '../team';
+import { generateInitialRoster, generateOpponentRoster } from '../team';
 import type { Player } from '../types';
 import { optimizedPlan, randomPlan } from './strategy';
 
@@ -159,8 +158,7 @@ export function simulateRun(
   const rng = new Rng(seed);
   // run.ts の createRun と同じ選手IDの付け方・名前の重複の避け方（乱数の消費をそろえるため）
   const ids = idCounter(runId, 0);
-  const generated = generatePlayers(rng, rules.initialRosterSize, {
-    targetOverall: rules.initialTargetOverall,
+  const generated = generateInitialRoster(rng, rules.initialRosterSize, rules.initialTargetOverall, {
     idFactory: ids.factory,
     ...(stockPicks.length > 0 ? { avoidNames: new Set(stockPicks.map((p) => fullName(p.name))) } : {}),
   });

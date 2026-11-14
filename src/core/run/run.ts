@@ -27,11 +27,10 @@ import { simulateGame } from '../game/engine';
 import { buildAutoPlan, validatePlan } from '../game/plan';
 import { reconcilePlan } from '../game/planEdit';
 import type { TeamEntry } from '../game/types';
-import { generatePlayers } from '../generate';
 import { fullName } from '../names';
 import { calcOverall } from '../overall';
 import { Rng } from '../rng';
-import { generateOpponentRoster } from '../team';
+import { generateInitialRoster, generateOpponentRoster } from '../team';
 import { FIELDER_ABILITY_KEYS, FIELDER_ABILITY_LABELS, PITCH_LABELS, type Player } from '../types';
 import { collectGameStats, mergeStatsTable } from '../stock/career';
 import { idCounter } from './ids';
@@ -76,8 +75,7 @@ export function createRun(seed: number, runId: string = `seed-${seed}`, stockPla
   if (new Set(stockPlayers.map((p) => p.id)).size !== stockPlayers.length) throw new RunError('同じ選手を2回選んでいます');
   const rng = new Rng(seed);
   const ids = idCounter(runId, 0);
-  const generated = generatePlayers(rng, INITIAL_ROSTER_SIZE, {
-    targetOverall: PLAYER_GENERATION.initialTargetOverall,
+  const generated = generateInitialRoster(rng, INITIAL_ROSTER_SIZE, PLAYER_GENERATION.initialTargetOverall, {
     idFactory: ids.factory,
     ...(stockPlayers.length > 0 ? { avoidNames: new Set(stockPlayers.map((p) => fullName(p.name))) } : {}),
   });

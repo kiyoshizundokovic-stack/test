@@ -15,7 +15,9 @@ import {
   type Player,
   type Position,
 } from '../core';
+import { useState } from 'react';
 import { FieldingAbilities, PitchingAbilities } from './abilities';
+import { PitcherTable } from './PitcherTable';
 import { StockBadge } from './PlayerCard';
 
 interface Props {
@@ -31,6 +33,7 @@ interface Props {
 
 /** 継投と守備位置（段階ごとに9つの守備位置を設定する） */
 export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectStage, onChange, stockIds }: Props) {
+  const [showPitchers, setShowPitchers] = useState(false);
   const stage = plan.stages[stageIndex]!;
   const prev = plan.stages[stageIndex - 1];
   const isLast = stageIndex === plan.stages.length - 1;
@@ -228,7 +231,27 @@ export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectS
                   {options(pos)}
                 </select>
                 {stockIds.has(id) && <StockBadge />} {pos === 'P' ? <PitchingAbilities p={p} /> : <FieldingAbilities p={p} />}
+                {pos === 'P' && (
+                  <button className="btn pitcher-table-open" aria-expanded={showPitchers} onClick={() => setShowPitchers((v) => !v)}>
+                    {showPitchers ? '一覧を閉じる' : '投手を一覧から選ぶ'}
+                  </button>
+                )}
               </div>
+              {pos === 'P' && showPitchers && (
+                <div className="pos-row-wide">
+                  <PitcherTable
+                    plan={plan}
+                    roster={roster}
+                    stageIndex={stageIndex}
+                    stockIds={stockIds}
+                    onPick={(pid) => {
+                      onChange(assignPosition(plan, stageIndex, 'P', pid));
+                      setShowPitchers(false);
+                    }}
+                    onClose={() => setShowPitchers(false)}
+                  />
+                </div>
+              )}
             </div>
           );
         })}

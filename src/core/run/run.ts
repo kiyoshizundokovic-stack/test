@@ -16,6 +16,7 @@ import {
   PITCH_RATING_MAX,
   PLAYER_GENERATION,
   QUICK_MAX,
+  STOCK,
   STAMINA_MAX,
   VELOCITY_MAX_KMH,
   WIN_POINT_RATIO,
@@ -32,6 +33,7 @@ import { calcOverall } from '../overall';
 import { Rng } from '../rng';
 import { generateOpponentRoster } from '../team';
 import { FIELDER_ABILITY_KEYS, FIELDER_ABILITY_LABELS, PITCH_LABELS, type Player } from '../types';
+import { collectGameStats, mergeStatsTable } from '../stock/career';
 import { idCounter } from './ids';
 import type { CurrentGame, GameSummary, Outcome, RunState } from './types';
 
@@ -65,21 +67,27 @@ function withRng<T>(state: RunState, fn: (rng: Rng) => T): { value: T; rngState:
 }
 
 /**
- * 新しいゲームを始める（初期選手9名・ポイント500・ライフ3）。
+ * 新しいゲームを始める（自動生成の9名＋ストックから最大3名・ポイント500・ライフ3）。
  * @param runId プレイID（UUID など。選手IDの接頭辞）。省略時はシードから作る（テスト・検証用）
+ * @param stockPlayers ストックから連れて行く選手（IDはそのまま。売却不可・ボス報酬対象外）
  */
-export function createRun(seed: number, runId: string = `seed-${seed}`): RunState {
+export function createRun(seed: number, runId: string = `seed-${seed}`, stockPlayers: readonly Player[] = []): RunState {
+  if (stockPlayers.length > STOCK.pickMax) throw new RunError(`ストックから連れて行けるのは${STOCK.pickMax}人までです`);
+  if (new Set(stockPlayers.map((p) => p.id)).size !== stockPlayers.length) throw new RunError('同じ選手を2回選んでいます');
   const rng = new Rng(seed);
   const ids = idCounter(runId, 0);
-  const roster = generatePlayers(rng, INITIAL_ROSTER_SIZE, {
+  const generated = generatePlayers(rng, INITIAL_ROSTER_SIZE, {
     targetOverall: PLAYER_GENERATION.initialTargetOverall,
     idFactory: ids.factory,
+    ...(stockPlayers.length > 0 ? { avoidNames: new Set(stockPlayers.map((p) => fullName(p.name))) } : {}),
   });
+  const roster = [...generated, ...stockPlayers.map((p) => ({ ...p }))];
   return {
-    version: 2,
+    version: 3,
     runId,
     nextSerial: ids.next(),
-    stockPlayerIds: [],
+    stockPlayerIds: stockPlayers.map((p) => p.id),
+    playStats: {},
     seed,
     rngState: rng.getState(),
     status: 'strategy',
@@ -176,6 +184,7 @@ export function playGame(state: RunState): RunState {
     },
     history: [...state.history, summary],
     current,
+    playStats: mergeStatsTable(state.playStats, collectGameStats(game, side)),
     rematch: null,
     planNotes: [],
   };
@@ -226,6 +235,7 @@ export function acquirePlayer(state: RunState, playerId: string): RunState {
 export function sellBlocker(state: RunState, playerId: string): string | null {
   if (!canReinforce(state)) return '売却は勝利後の補強フェーズでのみできます';
   if (!state.roster.some((p) => p.id === playerId)) return '所持していない選手です';
+  if (isStockPlayer(state, playerId)) return 'ストックから連れて行った選手は売却できません';
   if (state.roster.length <= MIN_ROSTER_SIZE) return `保有選手が${MIN_ROSTER_SIZE}名未満になるため売却できません`;
   return null;
 }
@@ -369,11 +379,24 @@ export function applyBossRewardToPlayer(player: Player, rng: Rng): { player: Pla
   };
 }
 
-/** ボス報酬：保有選手を1人選んで強化し、次の試合へ（100戦目なら終了） */
+/** ストックから連れて行った選手か */
+export function isStockPlayer(state: RunState, playerId: string): boolean {
+  return state.stockPlayerIds.includes(playerId);
+}
+
+/** ボス報酬の対象に選べない理由（選べるなら null） */
+export function bossRewardBlocker(state: RunState, playerId: string): string | null {
+  if (!state.roster.some((p) => p.id === playerId)) return '所持していない選手です';
+  if (isStockPlayer(state, playerId)) return 'ストックから連れて行った選手は強化できません';
+  return null;
+}
+
+/** ボス報酬：保有選手を1人選んで強化し、次の試合へ（100戦目なら終了）。ストックから連れて行った選手は選べない */
 export function applyBossReward(state: RunState, playerId: string): RunState {
   assertStatus(state, 'bossReward');
-  const target = state.roster.find((p) => p.id === playerId);
-  if (!target) throw new RunError('所持していない選手です');
+  const blocker = bossRewardBlocker(state, playerId);
+  if (blocker) throw new RunError(blocker);
+  const target = state.roster.find((p) => p.id === playerId)!;
   const { value, rngState } = withRng(state, (rng) => applyBossRewardToPlayer(target, rng));
   const roster = state.roster.map((p) => (p.id === playerId ? value.player : p));
   return proceed({ ...state, rngState, roster, lastBossReward: { playerId, changes: value.changes } });

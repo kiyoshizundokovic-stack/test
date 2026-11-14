@@ -35,11 +35,11 @@
 - `src/core/` … ゲームロジック（config, rng, types, names, pitches, overall, generate, format, team）
 - `src/core/run/` … ローグライク進行（RunState、試合・補強・ボス報酬・再戦・終了判定、選手ID）
 - `src/core/save/` … セーブデータの形式・検証・マイグレーション（React・ブラウザ非依存）
-- `src/core/stock/` … ストック（選手の持ち越し）と通算成績
+- `src/core/stock/` … ストック（選手の持ち越し・一覧の操作・並べ替え）と通算成績（試合ごとの集計・指標の定義 STAT_DEFINITIONS）
 - `src/core/analysis/` … バランス検証専用（最適化した作戦ボット、ランダム配置、対戦の勝率測定、規則を差し替えられるローグライクのシミュレーター）。ゲームの仕様ではない
 - `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format, balance＝バランス検証の集計, planEdit＝作戦の編集操作, fielding＝エラー判定, steal＝盗塁, replay＝試合画面の再生）
 - `scripts/` … Node で実行する確認用スクリプト（tsx）
 - `docs/` … 検証レポート（balance-report.md）
 - `src/App.tsx`, `src/main.tsx`, `src/styles.css` … React UI のエントリ（セーブデータの読み込み・自動保存）
 - `src/storage/` … IndexedDB への保存（UI 層。core からは使わない）
-- `src/ui/` … 画面コンポーネント（TitleScreen＝タイトル・データの入出力、PlayScreen＝進行中のプレイ、StrategyEditor＝作戦設定、GameScreen＝試合画面、RunScreens＝ホーム・結果と補強・ボス報酬・終了、PlayerCard＝選手表示 など）
+- `src/ui/` … 画面コンポーネント（TitleScreen＝タイトル・データの入出力、PlayScreen＝進行中のプレイ、StockScreens＝ストック一覧・ニューゲームの選手選び・終了時の選択、StrategyEditor＝作戦設定、GameScreen＝試合画面、RunScreens＝ホーム・結果と補強・ボス報酬・終了、PlayerCard＝選手表示 など）

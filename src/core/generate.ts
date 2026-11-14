@@ -179,12 +179,16 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
 export function generatePlayers(
   rng: Rng,
   count: number,
-  options: Omit<GeneratePlayerOptions, 'takenNames'> = {},
+  options: Omit<GeneratePlayerOptions, 'takenNames'> & {
+    /** 重複させたくない既存の名前（フルネーム。ストックから連れて行く選手など） */
+    avoidNames?: ReadonlySet<string>;
+  } = {},
 ): Player[] {
-  const taken = new Set<string>();
+  const { avoidNames, ...rest } = options;
+  const taken = new Set<string>(avoidNames ?? []);
   const players: Player[] = [];
   for (let i = 0; i < count; i++) {
-    const p = generatePlayer(rng, { ...options, takenNames: taken });
+    const p = generatePlayer(rng, { ...rest, takenNames: taken });
     taken.add(fullName(p.name));
     players.push(p);
   }

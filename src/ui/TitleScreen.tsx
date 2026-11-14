@@ -1,6 +1,6 @@
 /** タイトル（SPEC 8-1）とデータの入出力（SPEC 6） */
 import { useRef, useState } from 'react';
-import { parseSaveJson, SaveFormatError, type RunState, type StockData, makePlaySave, makeStockSave } from '../core';
+import { makePlaySave, makeStockSave, mergeStock, parseSaveJson, SaveFormatError, STOCK, type RunState, type StockData } from '../core';
 
 interface Props {
   savedRun: RunState | null;
@@ -11,6 +11,7 @@ interface Props {
   onNewGame: () => void;
   onImportPlay: (run: RunState) => void;
   onImportStock: (stock: StockData) => void;
+  onOpenStock: () => void;
 }
 
 function describeRun(run: RunState): string {
@@ -32,9 +33,11 @@ function download(filename: string, data: unknown) {
 
 const stamp = () => new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
 
-export function TitleScreen({ savedRun, stock, persistent, error, onContinue, onNewGame, onImportPlay, onImportStock }: Props) {
+export function TitleScreen({ savedRun, stock, persistent, error, onContinue, onNewGame, onImportPlay, onImportStock, onOpenStock }: Props) {
   const [showData, setShowData] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  /** 読み込んだストック（追加か置き換えかを選ぶまで保留） */
+  const [pendingStock, setPendingStock] = useState<StockData | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const ended = savedRun && (savedRun.status === 'gameover' || savedRun.status === 'finished');
 
@@ -46,10 +49,11 @@ export function TitleScreen({ savedRun, stock, persistent, error, onContinue, on
         if (savedRun && !window.confirm('進行中のプレイを、読み込んだプレイで置き換えますか？')) return;
         onImportPlay(data.run);
         setMessage(`プレイを読み込みました（${describeRun(data.run)}）`);
-      } else {
-        if (stock.entries.length > 0 && !window.confirm(`ストック（${stock.entries.length}人）を、読み込んだストック（${data.stock.entries.length}人）で置き換えますか？`)) return;
+      } else if (stock.entries.length === 0) {
         onImportStock(data.stock);
         setMessage(`ストックを読み込みました（${data.stock.entries.length}人）`);
+      } else {
+        setPendingStock(data.stock);
       }
     } catch (e) {
       setMessage(e instanceof SaveFormatError ? `読み込めませんでした：${e.message}` : `読み込めませんでした：${String(e)}`);
@@ -85,6 +89,14 @@ export function TitleScreen({ savedRun, stock, persistent, error, onContinue, on
         >
           新しく始める
         </button>
+        <button className="btn full-btn" onClick={onOpenStock}>
+          ストック一覧（{stock.entries.length}人）
+        </button>
+        {stock.entries.length > STOCK.max && (
+          <p className="status status-error">
+            ストックが上限（{STOCK.max}人）を超えています。削除して{STOCK.max}人以下にするまでニューゲームを始められません。
+          </p>
+        )}
         <button className="btn full-btn" onClick={() => setShowData((v) => !v)} aria-expanded={showData}>
           データの入出力
         </button>
@@ -118,6 +130,38 @@ export function TitleScreen({ savedRun, stock, persistent, error, onContinue, on
               }}
             />
           </div>
+          {pendingStock && (
+            <div className="notice" role="dialog" aria-label="ストックの読み込み方法">
+              読み込んだストック（{pendingStock.entries.length}人）を、今のストック（{stock.entries.length}人）にどう反映しますか？
+              <div className="title-menu" style={{ marginTop: 8 }}>
+                <button
+                  className="btn btn-primary full-btn"
+                  onClick={() => {
+                    const r = mergeStock(stock, pendingStock);
+                    onImportStock(r.stock);
+                    setPendingStock(null);
+                    setMessage(`ストックに追加しました（新しく${r.added}人、同じ選手${r.updated}人を上書き）`);
+                  }}
+                >
+                  追加する（同じ選手は上書き）
+                </button>
+                <button
+                  className="btn btn-danger full-btn"
+                  onClick={() => {
+                    if (!window.confirm('今のストックを消して、読み込んだストックに置き換えますか？（元に戻せません）')) return;
+                    onImportStock(pendingStock);
+                    setPendingStock(null);
+                    setMessage(`ストックを置き換えました（${pendingStock.entries.length}人）`);
+                  }}
+                >
+                  置き換える
+                </button>
+                <button className="btn full-btn" onClick={() => setPendingStock(null)}>
+                  やめる
+                </button>
+              </div>
+            </div>
+          )}
           {message && <p className="points-line">{message}</p>}
         </section>
       )}

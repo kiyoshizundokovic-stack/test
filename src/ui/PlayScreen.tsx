@@ -8,6 +8,7 @@ import {
   startRematch,
   validatePlan,
   type RunState,
+  type StockData,
 } from '../core';
 import { GameScreen } from './GameScreen';
 import { BossRewardScreen, EndScreen, NextOpponent, ResultScreen, RosterList, StatusTiles } from './RunScreens';
@@ -19,15 +20,17 @@ interface Props {
   run: RunState;
   /** 状態の更新（親で自動保存する） */
   setRun: (run: RunState) => void;
+  stock: StockData;
   onTitle: () => void;
-  onNewGame: () => void;
+  /** ゲーム終了時：ストックに残す選手を確定する */
+  onConclude: (keepIds: string[]) => void;
 }
 
 /**
  * 進行中のプレイの画面（SPEC 5）：ホーム／選手／作戦、試合、結果と補強、ボス報酬、ゲーム終了。
  * 状態が変わるたびに親（App）が保存する。
  */
-export function PlayScreen({ run, setRun, onTitle, onNewGame }: Props) {
+export function PlayScreen({ run, setRun, stock, onTitle, onConclude }: Props) {
   const [tab, setTab] = useState<HomeTab>('home');
   const update = (next: RunState) => {
     setRun(next);
@@ -91,14 +94,7 @@ export function PlayScreen({ run, setRun, onTitle, onNewGame }: Props) {
         <header className="app-header">
           <h1>ゲーム終了</h1>
         </header>
-        <EndScreen
-          run={run}
-          onRestart={() => {
-            setTab('home');
-            onNewGame();
-          }}
-          onTitle={onTitle}
-        />
+        <EndScreen run={run} stock={stock} onConclude={onConclude} />
       </main>
     );
   }
@@ -158,7 +154,7 @@ export function PlayScreen({ run, setRun, onTitle, onNewGame }: Props) {
         </>
       )}
       {tab === 'roster' && <RosterList run={run} />}
-      {tab === 'strategy' && <StrategyEditor roster={run.roster} plan={run.plan} onChange={(plan) => setRun(setPlan(run, plan))} />}
+      {tab === 'strategy' && <StrategyEditor roster={run.roster} plan={run.plan} onChange={(plan) => setRun(setPlan(run, plan))} stockIds={new Set(run.stockPlayerIds)} />}
 
       <div className="start-bar">
         <button className="btn btn-primary full-btn" disabled={planErrors.length > 0} onClick={() => update(playGame(run))}>

@@ -1,5 +1,6 @@
 /** ローグライク進行（SPEC 5）のデータ型。すべて JSON シリアライズ可能（フェーズ7でそのまま保存する） */
 import type { GamePlan, GameResult } from '../game/types';
+import type { PlayStats } from '../stock/career';
 import type { Player } from '../types';
 
 /**
@@ -60,14 +61,16 @@ export interface CurrentGame {
 }
 
 export interface RunState {
-  /** 進行中のプレイの形式のバージョン（save/format.ts の RUN_STATE_VERSION） */
-  version: 2;
+  /** 進行中のプレイの形式のバージョン（save/format.ts の SAVE_VERSION と同じ） */
+  version: 3;
   /** プレイID（UUID）。選手IDの接頭辞になる */
   runId: string;
   /** 次に生成する選手の通し番号（選手ID＝プレイID＋通し番号） */
   nextSerial: number;
-  /** ストックから連れて行った選手のID（売却不可・ボス報酬対象外。7bで使う） */
+  /** ストックから連れて行った選手のID（売却不可・ボス報酬対象外） */
   stockPlayerIds: string[];
+  /** このプレイでの自チームの選手ごとの成績（再戦を含む）。ゲーム終了時にストックの通算成績に加算する */
+  playStats: Record<string, PlayStats>;
   seed: number;
   /** PRNGの状態（相手の生成・試合・ボス報酬はすべてここから引く） */
   rngState: number;

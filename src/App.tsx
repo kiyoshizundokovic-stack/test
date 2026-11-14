@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { createRun, emptyStock, type RunState, type StockData } from './core';
+import { concludeRun, createRun, emptyStock, type Player, type RunState, type StockData } from './core';
 import { openStorage, type SaveStorage } from './storage/db';
 import { PlayScreen } from './ui/PlayScreen';
+import { NewGameScreen, StockScreen } from './ui/StockScreens';
 import { TitleScreen } from './ui/TitleScreen';
 
 /** 新しいゲームのシード。ゲームロジックの乱数ではないので時刻から作る（以降はプレイ内のPRNGで決まる） */
@@ -19,12 +20,17 @@ function newRunId(): string {
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** アプリ全体：起動時にセーブデータを読み込み、タイトルと進行中のプレイを切り替える。プレイは変わるたびに自動保存する */
+type Screen = 'title' | 'newGame' | 'stock' | 'play';
+
+/**
+ * アプリ全体：起動時にセーブデータ（進行中のプレイ・ストック）を読み込み、画面を切り替える。
+ * プレイ・ストックとも、変わるたびに自動保存する。
+ */
 export function App() {
   const [storage, setStorage] = useState<{ storage: SaveStorage; persistent: boolean } | null>(null);
   const [savedRun, setSavedRun] = useState<RunState | null>(null);
-  const [stock, setStock] = useState<StockData>(emptyStock());
-  const [run, setRunState] = useState<RunState | null>(null);
+  const [stock, setStockState] = useState<StockData>(emptyStock());
+  const [screen, setScreen] = useState<Screen>('title');
   const [error, setError] = useState<string | null>(null);
   const saving = useRef(Promise.resolve());
 
@@ -37,7 +43,7 @@ export function App() {
         setError(`保存されていたプレイを読み込めませんでした（${errorText(e)}）。新しく始めると上書きされます。`);
       }
       try {
-        setStock(await opened.storage.loadStock());
+        setStockState(await opened.storage.loadStock());
       } catch (e) {
         setError(`保存されていたストックを読み込めませんでした（${errorText(e)}）。`);
       }
@@ -53,21 +59,50 @@ export function App() {
     );
   }
 
-  /** 状態を更新して自動保存（保存は順番に行う） */
-  const setRun = (next: RunState) => {
-    setRunState(next);
-    setSavedRun(next);
-    saving.current = saving.current
-      .then(() => storage.storage.savePlay(next))
-      .catch((e) => setError(`自動保存に失敗しました（${errorText(e)}）`));
+  /** 保存は順番に行う（直前の保存が終わってから次を書く） */
+  const enqueue = (task: () => Promise<void>) => {
+    saving.current = saving.current.then(task).catch((e) => setError(`自動保存に失敗しました（${errorText(e)}）`));
   };
-  const newGame = () => setRun(createRun(newSeed(), newRunId()));
-  const toTitle = () => {
-    setRunState(null);
+  const setRun = (next: RunState) => {
+    setSavedRun(next);
+    enqueue(() => storage.storage.savePlay(next));
+  };
+  const setStock = (next: StockData) => {
+    setStockState(next);
+    enqueue(() => storage.storage.saveStock(next));
+  };
+  const go = (s: Screen) => {
+    setScreen(s);
     window.scrollTo(0, 0);
   };
+  const startGame = (picks: Player[]) => {
+    setRun(createRun(newSeed(), newRunId(), picks));
+    go('play');
+  };
 
-  if (run) return <PlayScreen run={run} setRun={setRun} onTitle={toTitle} onNewGame={newGame} />;
+  if (screen === 'play' && savedRun) {
+    return (
+      <PlayScreen
+        run={savedRun}
+        setRun={setRun}
+        stock={stock}
+        onTitle={() => go('title')}
+        onConclude={(keepIds) => {
+          // 終了したプレイの選手をストックに反映し、プレイを消す
+          setStock(concludeRun(stock, savedRun, keepIds, new Date().toISOString()));
+          setSavedRun(null);
+          enqueue(() => storage.storage.clearPlay());
+          go('title');
+        }}
+      />
+    );
+  }
+
+  if (screen === 'stock') return <StockScreen stock={stock} run={savedRun} onChange={setStock} onBack={() => go('title')} />;
+
+  if (screen === 'newGame') {
+    return <NewGameScreen stock={stock} onStart={startGame} onBack={() => go('title')} onOpenStock={() => go('stock')} />;
+  }
 
   return (
     <TitleScreen
@@ -75,16 +110,11 @@ export function App() {
       stock={stock}
       persistent={storage.persistent}
       error={error}
-      onContinue={() => savedRun && setRunState(savedRun)}
-      onNewGame={newGame}
-      onImportPlay={(r) => {
-        setSavedRun(r);
-        void storage.storage.savePlay(r).catch((e) => setError(`保存に失敗しました（${errorText(e)}）`));
-      }}
-      onImportStock={(s) => {
-        setStock(s);
-        void storage.storage.saveStock(s).catch((e) => setError(`保存に失敗しました（${errorText(e)}）`));
-      }}
+      onContinue={() => go('play')}
+      onNewGame={() => (stock.entries.length > 0 ? go('newGame') : startGame([]))}
+      onImportPlay={(r) => setRun(r)}
+      onImportStock={(s) => setStock(s)}
+      onOpenStock={() => go('stock')}
     />
   );
 }

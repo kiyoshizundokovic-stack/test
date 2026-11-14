@@ -1,8 +1,9 @@
 /**
  * セーブデータの検証とマイグレーション（SPEC 6）。
- * - 進行中のプレイ：バージョン1（フェーズ6の形式。保存は未実装だったが形式としては存在した）→ 2
- *   追加：プレイID・選手の通し番号・ストックから連れて行った選手・再戦の情報
- * - ストック：バージョン2から。通算成績に項目が増えたときは、欠けている項目を0で補う
+ * - 進行中のプレイ：バージョン1（フェーズ6の形式。保存は未実装だったが形式としては存在した）→ 2 → 3
+ *   2：プレイID・選手の通し番号・ストックから連れて行った選手・再戦の情報
+ *   3：このプレイでの選手ごとの成績（playStats）
+ * - ストック：バージョン2から（3で形式の変更なし）。通算成績に項目が増えたときは、欠けている項目を0で補う
  */
 import { buildAutoPlan } from '../game/plan';
 import type { GamePlan } from '../game/types';
@@ -43,7 +44,7 @@ export function validatePlayer(v: unknown, path = '選手'): Player {
 // ---------------------------------------------------------------------------
 
 /** バージョン1（フェーズ6）の RunState をバージョン2に変換する */
-export function migrateRunV1toV2(v1: Obj): RunState {
+export function migrateRunV1toV2(v1: Obj): Obj {
   const seed = num(v1.seed, 'run.seed');
   const history = arr(v1.history, 'run.history').map((h) => ({ ...(h as Obj), rematch: false }) as unknown as GameSummary);
   let current: CurrentGame | null = null;
@@ -62,7 +63,7 @@ export function migrateRunV1toV2(v1: Obj): RunState {
   }
   const run = {
     ...(v1 as unknown as RunState),
-    version: 2 as const,
+    version: 2,
     runId: `legacy-${seed}`,
     // 旧形式の選手ID（乱数由来）はそのまま。新しく生成する選手はプレイID＋通し番号になる
     nextSerial: 0,
@@ -71,13 +72,19 @@ export function migrateRunV1toV2(v1: Obj): RunState {
     current,
     rematch: null,
   };
-  return run;
+  return run as unknown as Obj;
 }
 
-/** RunState（バージョン2）の検証 */
+/** バージョン2の RunState をバージョン3に変換する（このプレイでの成績を空で追加） */
+export function migrateRunV2toV3(v2: Obj): Obj {
+  return { ...v2, version: 3, playStats: {} };
+}
+
+/** RunState（バージョン3）の検証 */
 export function validateRun(v: unknown): RunState {
   if (!isObj(v)) return fail('進行中のプレイの形式が正しくありません');
-  if (v.version !== 2) fail(`進行中のプレイのバージョンが対応していません（${String(v.version)}）`);
+  if (v.version !== 3) fail(`進行中のプレイのバージョンが対応していません（${String(v.version)}）`);
+  if (!isObj(v.playStats)) fail('run.playStats がありません');
   str(v.runId, 'run.runId');
   num(v.nextSerial, 'run.nextSerial');
   arr(v.stockPlayerIds, 'run.stockPlayerIds');
@@ -97,11 +104,13 @@ export function validateRun(v: unknown): RunState {
   return v as unknown as RunState;
 }
 
-/** バージョンに応じて RunState を最新に変換する */
+/** バージョンに応じて RunState を最新に変換する（1 → 2 → 3 の順に変換） */
 export function migrateRun(v: unknown): RunState {
   if (!isObj(v)) return fail('進行中のプレイの形式が正しくありません');
-  if (v.version === 1) return validateRun(migrateRunV1toV2(v));
-  return validateRun(v);
+  let cur: Obj = v;
+  if (cur.version === 1) cur = migrateRunV1toV2(cur) as unknown as Obj;
+  if (cur.version === 2) cur = migrateRunV2toV3(cur);
+  return validateRun(cur);
 }
 
 /** 保存・エクスポートされたプレイ（{ kind: 'play', version, run }）を読み込み、最新の形式で返す */

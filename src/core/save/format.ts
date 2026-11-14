@@ -6,7 +6,7 @@ import type { RunState } from '../run/types';
 import type { StockData } from '../stock/types';
 
 /** セーブデータ（エクスポートのJSONも同じ形）のバージョン */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface PlaySave {
   kind: 'play';

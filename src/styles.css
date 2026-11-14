@@ -208,3 +208,18 @@ button, select { font: inherit; color: inherit; }
 .title-menu { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .title-menu .btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .title-sub { opacity: 0.85; }
+.badge-stock { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--ok-weak); color: var(--ok); vertical-align: middle; margin-left: 2px; }
+
+/* ---- ストック ---- */
+.sort-control { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sort-control select { min-height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 2px 6px; max-width: 60vw; }
+.stock-toolbar { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+.row-leading { display: flex; align-items: center; gap: 6px; flex: none; }
+.row-leading input, .keep-check { width: 22px; height: 22px; flex: none; }
+.fav { background: none; border: 0; font-size: 22px; line-height: 1; color: var(--muted); cursor: pointer; padding: 4px; min-width: 32px; }
+.fav.on { color: #e3a008; }
+.career-title { font-size: 13px; margin: 4px 0; color: var(--muted); }
+.rename-form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.rename-form input { width: 7em; min-height: 34px; border: 1px solid var(--border); border-radius: 8px; padding: 2px 8px; background: var(--surface); }
+.detail-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.error-text { color: var(--danger); }

@@ -25,6 +25,7 @@ function toV1(run: RunState): Record<string, unknown> {
   delete v1.runId;
   delete v1.nextSerial;
   delete v1.stockPlayerIds;
+  delete v1.playStats;
   delete v1.rematch;
   for (const h of v1.history) delete h.rematch;
   if (v1.current) {
@@ -74,7 +75,8 @@ describe('進行中のプレイの保存', () => {
   it('バージョン1（フェーズ6の形式）からマイグレーションでき、そのまま続きを遊べる', () => {
     for (const s of [createRun(2), playedRun(2)]) {
       const migrated = migrateRun(toV1(s));
-      expect(migrated.version).toBe(2);
+      expect(migrated.version).toBe(3);
+      expect(migrated.playStats).toEqual({});
       expect(migrated.runId).toBe(`legacy-${s.seed}`);
       expect(migrated.rematch).toBeNull();
       expect(migrated.stockPlayerIds).toEqual([]);
@@ -98,7 +100,17 @@ describe('進行中のプレイの保存', () => {
   it('kind のないバージョン1のエクスポート（RunState そのまま）も読み込める', () => {
     const save = readPlaySave(toV1(createRun(4)));
     expect(save.version).toBe(SAVE_VERSION);
-    expect(save.run.version).toBe(2);
+    expect(save.run.version).toBe(3);
+  });
+
+  it('バージョン2（フェーズ7aの形式）からもマイグレーションできる（このプレイでの成績は空から）', () => {
+    const v2 = JSON.parse(JSON.stringify(playedRun(2))) as Record<string, unknown>;
+    v2.version = 2;
+    delete v2.playStats;
+    const save = readPlaySave({ kind: 'play', version: 2, savedAt: '', run: v2 });
+    expect(save.run.version).toBe(3);
+    expect(save.run.playStats).toEqual({});
+    expect(save.run.roster).toEqual(playedRun(2).roster);
   });
 
   it('不正なデータはわかりやすいエラーにする', () => {

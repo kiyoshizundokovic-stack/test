@@ -11,14 +11,18 @@ import {
   fullName,
   LIFE_PRICE,
   MAX_ROSTER_SIZE,
+  bossRewardBlocker,
+  isStockPlayer,
   OPPONENT,
   resultOptions,
   sellBlocker,
   sellPlayer,
   stageOf,
   type RunState,
+  type StockData,
 } from '../core';
 import { PlayerRow } from './PlayerCard';
+import { KeepSelection } from './StockScreens';
 
 export function StatusTiles({ run }: { run: RunState }) {
   const { record } = run;
@@ -73,7 +77,7 @@ export function RosterList({ run, title = '自チームの選手' }: { run: RunS
       <p className="hint">選手をタップすると全能力を表示します。売却は勝利後の補強フェーズでのみできます。</p>
       <ul className="player-list">
         {run.roster.map((p) => (
-          <PlayerRow key={p.id} p={p} />
+          <PlayerRow key={p.id} p={p} {...(isStockPlayer(run, p.id) ? { badge: 'ストック' } : {})} />
         ))}
       </ul>
     </section>
@@ -171,6 +175,7 @@ export function ResultScreen({
                   <PlayerRow
                     key={p.id}
                     p={p}
+                    {...(isStockPlayer(run, p.id) ? { badge: 'ストック', note: '売却できません' } : {})}
                     actions={
                       <button
                         className="btn btn-danger"
@@ -228,22 +233,26 @@ export function BossRewardScreen({ run, onApply }: { run: RunState; onApply: (pl
       <section className="card">
         <h2>ボス撃破の特別報酬</h2>
         <p className="hint">
-          強化する選手を1人選んでください。各能力が総合力換算で+10（野手8能力・賢さ・コントロール・クイック・スタミナ +10、球速 +3km/h、球種 合計+3）上がります。上限は超えません。
+          強化する選手を1人選んでください（ストックから連れて行った選手は選べません）。各能力が総合力換算で+10（野手8能力・賢さ・コントロール・クイック・スタミナ +10、球速 +3km/h、球種 合計+3）上がります。上限は超えません。
         </p>
       </section>
       <section className="card">
         <ul className="player-list">
-          {run.roster.map((p) => (
-            <PlayerRow
-              key={p.id}
-              p={p}
-              actions={
-                <button className="btn choice" aria-pressed={selected === p.id} onClick={() => setSelected(p.id)}>
-                  {selected === p.id ? '選択中' : '選ぶ'}
-                </button>
-              }
-            />
-          ))}
+          {run.roster.map((p) => {
+            const blocker = bossRewardBlocker(run, p.id);
+            return (
+              <PlayerRow
+                key={p.id}
+                p={p}
+                {...(isStockPlayer(run, p.id) ? { badge: 'ストック', note: '強化の対象に選べません' } : {})}
+                actions={
+                  <button className="btn choice" disabled={blocker !== null} aria-pressed={selected === p.id} onClick={() => setSelected(p.id)}>
+                    {selected === p.id ? '選択中' : '選ぶ'}
+                  </button>
+                }
+              />
+            );
+          })}
         </ul>
       </section>
       <div className="start-bar">
@@ -257,7 +266,16 @@ export function BossRewardScreen({ run, onApply }: { run: RunState; onApply: (pl
 }
 
 /** ゲーム終了（ライフ0／100戦終了） */
-export function EndScreen({ run, onRestart, onTitle }: { run: RunState; onRestart: () => void; onTitle: () => void }) {
+export function EndScreen({
+  run,
+  stock,
+  onConclude,
+}: {
+  run: RunState;
+  stock: StockData;
+  /** ストックに残す選手を確定する（連れて行った選手は自動で戻る） */
+  onConclude: (keepIds: string[]) => void;
+}) {
   const finished = run.status === 'finished';
   return (
     <>
@@ -267,9 +285,8 @@ export function EndScreen({ run, onRestart, onTitle }: { run: RunState; onRestar
           {finished ? '全100試合を戦い抜きました。' : `ライフが尽きました（第${run.gameNumber}戦まで）。`}
           {run.record.wins}勝{run.record.losses}敗{run.record.draws}分
         </p>
-        <p className="hint">ストックに残す選手の選択はフェーズ7bで実装します。</p>
       </section>
-      <RosterList run={run} title="最終メンバー" />
+      <KeepSelection run={run} stock={stock} onConclude={onConclude} />
       <section className="card">
         <h2>試合の記録</h2>
         <ol className="history">
@@ -281,14 +298,6 @@ export function EndScreen({ run, onRestart, onTitle }: { run: RunState; onRestar
           ))}
         </ol>
       </section>
-      <div className="title-menu">
-        <button className="btn btn-primary full-btn" onClick={onRestart}>
-          新しく始める
-        </button>
-        <button className="btn full-btn" onClick={onTitle}>
-          タイトルへ
-        </button>
-      </div>
     </>
   );
 }

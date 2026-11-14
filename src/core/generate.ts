@@ -34,6 +34,11 @@ export interface GeneratePlayerOptions {
   archetype?: ArchetypeKey;
   /** 重複させたくない名前（フルネーム） */
   takenNames?: ReadonlySet<string>;
+  /**
+   * 選手IDの作り方。ゲームのプレイ中は「プレイID＋通し番号」で一意にする（run/ids.ts）。
+   * 省略時は乱数から作る（テスト・検証スクリプト用。プレイをまたいだ一意性は保証しない）
+   */
+  idFactory?: () => string;
 }
 
 type Slot = keyof ArchetypeWeights;
@@ -141,7 +146,7 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
     diff -= step * weights[slot];
   }
 
-  const id = generateId(rng);
+  const id = options.idFactory ? options.idFactory() : generateId(rng);
   const name = generateUniqueName(rng, options.takenNames ?? new Set());
   const pitches = generatePitches(rng, values.pitches, g.pitchValuePerPitch);
 

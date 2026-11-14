@@ -10,6 +10,7 @@ import type { GamePlan, TeamEntry } from '../game/types';
 import { generatePlayers } from '../generate';
 import { calcOverall } from '../overall';
 import { Rng } from '../rng';
+import { idCounter } from '../run/ids';
 import { applyBossRewardToPlayer } from '../run/run';
 import { generateOpponentRoster } from '../team';
 import type { Player } from '../types';
@@ -135,8 +136,10 @@ function reinforce(
 
 export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RULES): RunOutcome {
   const rng = new Rng(seed);
+  // run.ts の createRun と同じ選手IDの付け方（乱数の消費をそろえるため）
+  const ids = idCounter(`seed-${seed}`, 0);
   const st = {
-    roster: generatePlayers(rng, rules.initialRosterSize, { targetOverall: rules.initialTargetOverall }),
+    roster: generatePlayers(rng, rules.initialRosterSize, { targetOverall: rules.initialTargetOverall, idFactory: ids.factory }),
     points: rules.initialPoints,
     life: rules.initialLife,
   };
@@ -160,7 +163,7 @@ export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RU
       planKey = rosterKey();
     }
     // run.ts の playGame と同じ順序で乱数を使う（再戦では相手を生成しない）
-    const opponent: Player[] = rematch ? rematch.opponent : generateOpponentRoster(rng, average);
+    const opponent: Player[] = rematch ? rematch.opponent : generateOpponentRoster(rng, average, undefined, ids.factory);
     const enemyPlan: GamePlan = rematch
       ? rematch.plan
       : rules.enemyPlan === 'random'

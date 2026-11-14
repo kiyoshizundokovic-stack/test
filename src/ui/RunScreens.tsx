@@ -257,7 +257,7 @@ export function BossRewardScreen({ run, onApply }: { run: RunState; onApply: (pl
 }
 
 /** ゲーム終了（ライフ0／100戦終了） */
-export function EndScreen({ run, onRestart }: { run: RunState; onRestart: () => void }) {
+export function EndScreen({ run, onRestart, onTitle }: { run: RunState; onRestart: () => void; onTitle: () => void }) {
   const finished = run.status === 'finished';
   return (
     <>
@@ -267,7 +267,7 @@ export function EndScreen({ run, onRestart }: { run: RunState; onRestart: () => 
           {finished ? '全100試合を戦い抜きました。' : `ライフが尽きました（第${run.gameNumber}戦まで）。`}
           {run.record.wins}勝{run.record.losses}敗{run.record.draws}分
         </p>
-        <p className="hint">チームの登録はフェーズ7で実装します。</p>
+        <p className="hint">ストックに残す選手の選択はフェーズ7bで実装します。</p>
       </section>
       <RosterList run={run} title="最終メンバー" />
       <section className="card">
@@ -281,9 +281,14 @@ export function EndScreen({ run, onRestart }: { run: RunState; onRestart: () => 
           ))}
         </ol>
       </section>
-      <button className="btn btn-primary full-btn" onClick={onRestart}>
-        新しく始める
-      </button>
+      <div className="title-menu">
+        <button className="btn btn-primary full-btn" onClick={onRestart}>
+          新しく始める
+        </button>
+        <button className="btn full-btn" onClick={onTitle}>
+          タイトルへ
+        </button>
+      </div>
     </>
   );
 }

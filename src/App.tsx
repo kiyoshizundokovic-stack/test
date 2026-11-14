@@ -1,177 +1,90 @@
-import { useState } from 'react';
-import {
-  applyBossReward,
-  createRun,
-  finishResult,
-  playGame,
-  setPlan,
-  showResult,
-  startRematch,
-  validatePlan,
-  type RunState,
-} from './core';
-import { GameScreen } from './ui/GameScreen';
-import { BossRewardScreen, EndScreen, NextOpponent, ResultScreen, RosterList, StatusTiles } from './ui/RunScreens';
-import { StrategyEditor } from './ui/StrategyEditor';
+import { useEffect, useRef, useState } from 'react';
+import { createRun, emptyStock, type RunState, type StockData } from './core';
+import { openStorage, type SaveStorage } from './storage/db';
+import { PlayScreen } from './ui/PlayScreen';
+import { TitleScreen } from './ui/TitleScreen';
 
-type HomeTab = 'home' | 'roster' | 'strategy';
-
-/** 新しいゲームのシード。ゲームロジックの乱数ではないので時刻から作る（以降はラン内のPRNGで決まる） */
+/** 新しいゲームのシード。ゲームロジックの乱数ではないので時刻から作る（以降はプレイ内のPRNGで決まる） */
 const newSeed = () => Date.now() % 2147483647;
 
-/**
- * ローグライク進行（SPEC 5）。保存はフェーズ7で実装するため、リロードすると最初からになる。
- */
+/** プレイID（UUID）。選手IDの接頭辞になる。ゲームロジックの乱数とは別に、ブラウザの乱数で作る */
+function newRunId(): string {
+  const c: Crypto = globalThis.crypto;
+  // randomUUID は安全なコンテキスト（https・localhost）でのみ使えるので、ない場合は getRandomValues で作る
+  if (typeof c.randomUUID === 'function') return c.randomUUID();
+  const bytes = new Uint8Array(16);
+  c.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** アプリ全体：起動時にセーブデータを読み込み、タイトルと進行中のプレイを切り替える。プレイは変わるたびに自動保存する */
 export function App() {
-  const [run, setRun] = useState<RunState>(() => createRun(newSeed()));
-  const [tab, setTab] = useState<HomeTab>('home');
-  const update = (next: RunState) => {
-    setRun(next);
+  const [storage, setStorage] = useState<{ storage: SaveStorage; persistent: boolean } | null>(null);
+  const [savedRun, setSavedRun] = useState<RunState | null>(null);
+  const [stock, setStock] = useState<StockData>(emptyStock());
+  const [run, setRunState] = useState<RunState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const saving = useRef(Promise.resolve());
+
+  useEffect(() => {
+    void (async () => {
+      const opened = await openStorage();
+      try {
+        setSavedRun(await opened.storage.loadPlay());
+      } catch (e) {
+        setError(`保存されていたプレイを読み込めませんでした（${errorText(e)}）。新しく始めると上書きされます。`);
+      }
+      try {
+        setStock(await opened.storage.loadStock());
+      } catch (e) {
+        setError(`保存されていたストックを読み込めませんでした（${errorText(e)}）。`);
+      }
+      setStorage(opened);
+    })();
+  }, []);
+
+  if (!storage) {
+    return (
+      <main className="app title-screen">
+        <p className="hint">読み込み中…</p>
+      </main>
+    );
+  }
+
+  /** 状態を更新して自動保存（保存は順番に行う） */
+  const setRun = (next: RunState) => {
+    setRunState(next);
+    setSavedRun(next);
+    saving.current = saving.current
+      .then(() => storage.storage.savePlay(next))
+      .catch((e) => setError(`自動保存に失敗しました（${errorText(e)}）`));
+  };
+  const newGame = () => setRun(createRun(newSeed(), newRunId()));
+  const toTitle = () => {
+    setRunState(null);
     window.scrollTo(0, 0);
   };
 
-  if (run.status === 'game') {
-    const cur = run.current!;
-    return (
-      <main className="app">
-        <header className="app-header">
-          <h1>
-            第{cur.gameNumber}戦{cur.boss ? '（ボス戦）' : ''}
-            {cur.rematch ? '・再戦' : ''}
-          </h1>
-          <span className="muted small">
-            先攻 {cur.game.away.name}／後攻 {cur.game.home.name}
-          </span>
-        </header>
-        <GameScreen game={cur.game} onBack={() => update(showResult(run))} backLabel="結果へ" skipLabel="試合を飛ばして結果へ" />
-      </main>
-    );
-  }
+  if (run) return <PlayScreen run={run} setRun={setRun} onTitle={toTitle} onNewGame={newGame} />;
 
-  if (run.status === 'result') {
-    return (
-      <main className="app">
-        <header className="app-header">
-          <h1>第{run.current!.gameNumber}戦 結果</h1>
-        </header>
-        <ResultScreen
-          run={run}
-          onChange={setRun}
-          onNext={() => {
-            setTab('home');
-            update(finishResult(run));
-          }}
-          onRematch={() => {
-            setTab('home');
-            update(startRematch(run));
-          }}
-        />
-      </main>
-    );
-  }
-
-  if (run.status === 'bossReward') {
-    return (
-      <main className="app">
-        <header className="app-header">
-          <h1>ボス撃破</h1>
-        </header>
-        <BossRewardScreen run={run} onApply={(id) => update(applyBossReward(run, id))} />
-      </main>
-    );
-  }
-
-  if (run.status === 'gameover' || run.status === 'finished') {
-    return (
-      <main className="app">
-        <header className="app-header">
-          <h1>ゲーム終了</h1>
-        </header>
-        <EndScreen
-          run={run}
-          onRestart={() => {
-            setTab('home');
-            update(createRun(newSeed()));
-          }}
-        />
-      </main>
-    );
-  }
-
-  // 試合前（ホーム／選手／作戦）
-  const planErrors = validatePlan(run.plan, run.roster);
   return (
-    <main className="app">
-      <header className="app-header">
-        <h1>野球ローグライク</h1>
-        <button
-          className="btn"
-          onClick={() => {
-            if (window.confirm('現在のゲームを破棄して新しく始めますか？')) {
-              setTab('home');
-              update(createRun(newSeed()));
-            }
-          }}
-        >
-          新規
-        </button>
-      </header>
-      <div className="tabs" role="tablist">
-        {(
-          [
-            ['home', 'ホーム'],
-            ['roster', '選手'],
-            ['strategy', '作戦'],
-          ] as const
-        ).map(([key, label]) => (
-          <button key={key} className="tab" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {run.planNotes.length > 0 && (
-        <div className="notice" role="status">
-          選手の入れ替えに合わせて作戦を自動で修正しました。「作戦」で確認してください。
-          <ul>
-            {run.planNotes.map((n) => (
-              <li key={n}>{n}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {tab === 'home' && (
-        <>
-          <StatusTiles run={run} />
-          <section className="card">
-            <NextOpponent run={run} />
-            {run.lastBossReward && run.history.length > 0 && run.history[run.history.length - 1]!.boss && (
-              <p className="small muted">ボス報酬：{run.lastBossReward.changes.join('、')}</p>
-            )}
-            {run.history.length > 0 && (
-              <p className="small muted">
-                前の試合：第{run.history.at(-1)!.gameNumber}戦{run.history.at(-1)!.rematch ? '（再戦）' : ''}{' '}
-                {run.history.at(-1)!.outcome === 'win' ? '勝利' : run.history.at(-1)!.outcome === 'loss' ? '敗北' : '引き分け'}{' '}
-                {run.history.at(-1)!.score.mine}-{run.history.at(-1)!.score.opponent}
-              </p>
-            )}
-          </section>
-          <RosterList run={run} />
-        </>
-      )}
-      {tab === 'roster' && <RosterList run={run} />}
-      {tab === 'strategy' && <StrategyEditor roster={run.roster} plan={run.plan} onChange={(plan) => setRun(setPlan(run, plan))} />}
-
-      <div className="start-bar">
-        <button className="btn btn-primary full-btn" disabled={planErrors.length > 0} onClick={() => update(playGame(run))}>
-          {planErrors.length > 0
-            ? '作戦に問題があります（「作戦」で修正してください）'
-            : run.rematch
-              ? `第${run.gameNumber}戦の再戦を開始`
-              : `第${run.gameNumber}戦を開始`}
-        </button>
-      </div>
-    </main>
+    <TitleScreen
+      savedRun={savedRun}
+      stock={stock}
+      persistent={storage.persistent}
+      error={error}
+      onContinue={() => savedRun && setRunState(savedRun)}
+      onNewGame={newGame}
+      onImportPlay={(r) => {
+        setSavedRun(r);
+        void storage.storage.savePlay(r).catch((e) => setError(`保存に失敗しました（${errorText(e)}）`));
+      }}
+      onImportStock={(s) => {
+        setStock(s);
+        void storage.storage.saveStock(s).catch((e) => setError(`保存に失敗しました（${errorText(e)}）`));
+      }}
+    />
   );
 }

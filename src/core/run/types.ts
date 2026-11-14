@@ -60,7 +60,14 @@ export interface CurrentGame {
 }
 
 export interface RunState {
-  version: 1;
+  /** 進行中のプレイの形式のバージョン（save/format.ts の RUN_STATE_VERSION） */
+  version: 2;
+  /** プレイID（UUID）。選手IDの接頭辞になる */
+  runId: string;
+  /** 次に生成する選手の通し番号（選手ID＝プレイID＋通し番号） */
+  nextSerial: number;
+  /** ストックから連れて行った選手のID（売却不可・ボス報酬対象外。7bで使う） */
+  stockPlayerIds: string[];
   seed: number;
   /** PRNGの状態（相手の生成・試合・ボス報酬はすべてここから引く） */
   rngState: number;

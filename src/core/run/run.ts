@@ -32,6 +32,7 @@ import { calcOverall } from '../overall';
 import { Rng } from '../rng';
 import { generateOpponentRoster } from '../team';
 import { FIELDER_ABILITY_KEYS, FIELDER_ABILITY_LABELS, PITCH_LABELS, type Player } from '../types';
+import { idCounter } from './ids';
 import type { CurrentGame, GameSummary, Outcome, RunState } from './types';
 
 export const MY_TEAM_NAME = '自チーム';
@@ -63,12 +64,22 @@ function withRng<T>(state: RunState, fn: (rng: Rng) => T): { value: T; rngState:
   return { value, rngState: rng.getState() };
 }
 
-/** 新しいゲームを始める（初期選手9名・ポイント500・ライフ3） */
-export function createRun(seed: number): RunState {
+/**
+ * 新しいゲームを始める（初期選手9名・ポイント500・ライフ3）。
+ * @param runId プレイID（UUID など。選手IDの接頭辞）。省略時はシードから作る（テスト・検証用）
+ */
+export function createRun(seed: number, runId: string = `seed-${seed}`): RunState {
   const rng = new Rng(seed);
-  const roster = generatePlayers(rng, INITIAL_ROSTER_SIZE, { targetOverall: PLAYER_GENERATION.initialTargetOverall });
+  const ids = idCounter(runId, 0);
+  const roster = generatePlayers(rng, INITIAL_ROSTER_SIZE, {
+    targetOverall: PLAYER_GENERATION.initialTargetOverall,
+    idFactory: ids.factory,
+  });
   return {
-    version: 1,
+    version: 2,
+    runId,
+    nextSerial: ids.next(),
+    stockPlayerIds: [],
     seed,
     rngState: rng.getState(),
     status: 'strategy',
@@ -109,8 +120,9 @@ export function playGame(state: RunState): RunState {
   // 再戦なら保存しておいた相手（選手・作戦）をそのまま使い、そうでなければ強さの段階に応じて生成する
   const setup = state.rematch;
   const { boss, average } = setup ? { boss: setup.boss, average: setup.targetAverage } : stageOf(state.gameNumber);
+  const ids = idCounter(state.runId, state.nextSerial);
   const { value, rngState } = withRng(state, (rng) => {
-    const opponent = setup ? setup.opponent : generateOpponentRoster(rng, average);
+    const opponent = setup ? setup.opponent : generateOpponentRoster(rng, average, undefined, ids.factory);
     const opponentPlan = setup ? setup.opponentPlan : buildAutoPlan(opponent);
     const opponentName = setup ? setup.opponentName : `${boss ? 'ボス' : '相手'}（第${state.gameNumber}戦）`;
     const mine: TeamEntry = { name: MY_TEAM_NAME, players: state.roster, plan: state.plan };
@@ -153,6 +165,7 @@ export function playGame(state: RunState): RunState {
   return {
     ...state,
     rngState,
+    nextSerial: ids.next(),
     status: 'game',
     points: state.points + pointsGained,
     life: outcome === 'loss' ? state.life - 1 : state.life,

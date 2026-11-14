@@ -12,6 +12,7 @@ import {
   LIFE_PRICE,
   MAX_ROSTER_SIZE,
   OPPONENT,
+  resultOptions,
   sellBlocker,
   sellPlayer,
   stageOf,
@@ -47,8 +48,15 @@ export function StatusTiles({ run }: { run: RunState }) {
   );
 }
 
-export function NextOpponent({ gameNumber }: { gameNumber: number }) {
-  const { stage, boss, average } = stageOf(gameNumber);
+export function NextOpponent({ run }: { run: RunState }) {
+  const { stage, boss, average } = stageOf(run.gameNumber);
+  if (run.rematch) {
+    return (
+      <p className="points-line">
+        次の試合：<span className="boss">再戦</span>　{run.rematch.opponentName}と、同じ選手・打順・守備配置・継投で再戦します（試合数は進みません）。作戦は変更できます。
+      </p>
+    );
+  }
   return (
     <p className="points-line">
       次の相手：{boss ? <span className="boss">ボス戦</span> : '通常戦'}（強さ 段階{stage + 1}・平均総合力 {average}前後）
@@ -73,7 +81,17 @@ export function RosterList({ run, title = '自チームの選手' }: { run: RunS
 }
 
 /** 試合結果と補強フェーズ（SPEC 5.3） */
-export function ResultScreen({ run, onChange, onNext }: { run: RunState; onChange: (r: RunState) => void; onNext: () => void }) {
+export function ResultScreen({
+  run,
+  onChange,
+  onNext,
+  onRematch,
+}: {
+  run: RunState;
+  onChange: (r: RunState) => void;
+  onNext: () => void;
+  onRematch: () => void;
+}) {
   const cur = run.current!;
   const mine = cur.game.score[cur.side];
   const theirs = cur.game.score[cur.side === 'away' ? 'home' : 'away'];
@@ -81,17 +99,28 @@ export function ResultScreen({ run, onChange, onNext }: { run: RunState; onChang
   const reinforce = cur.outcome === 'win';
   const lifeBlocker = buyLifeBlocker(run);
   const lastGame = cur.gameNumber >= OPPONENT.totalGames;
+  const options = resultOptions(run);
+  const rematchLabel = cur.outcome === 'loss' ? 'リベンジする' : '再戦する';
 
   return (
     <>
       <section className="card">
         <p className={`outcome ${cur.outcome}`}>
           {cur.boss && <span className="boss">ボス戦 </span>}
+          {cur.rematch && <span className="muted">再戦 </span>}
           {label}　{mine} - {theirs}
         </p>
         {cur.outcome === 'win' && <p className="points-line">勝利ポイント +{cur.pointsGained}（相手の平均総合力 {cur.opponentAverage.toFixed(1)} × 1/10）</p>}
         {cur.outcome === 'loss' && <p className="points-line">ライフ −1（残り {run.life}）</p>}
         {cur.outcome === 'draw' && <p className="points-line">引き分け：ライフ・ポイントの変化なし</p>}
+        {options.rematch && (
+          <p className="hint">
+            {cur.boss
+              ? 'ボス戦は勝たないと次に進めません。同じ相手（選手・打順・守備配置・継投）と再戦します。'
+              : `「${rematchLabel}」を選ぶと、同じ相手（選手・打順・守備配置・継投）と再戦します。試合数は進みません。`}
+            再戦の前に作戦を変更できます。
+          </p>
+        )}
       </section>
       <StatusTiles run={run} />
 
@@ -163,18 +192,28 @@ export function ResultScreen({ run, onChange, onNext }: { run: RunState; onChang
         </>
       )}
 
-      <div className="start-bar">
-        <button className="btn btn-primary full-btn" onClick={onNext}>
-          {reinforce && cur.boss
-            ? '補強を終えてボス報酬へ'
-            : run.life <= 0
-              ? 'ゲーム終了へ'
-              : lastGame
+      <div className="start-bar result-actions-bar">
+        {options.gameOver && (
+          <button className="btn btn-primary full-btn" onClick={onNext}>
+            ゲーム終了へ
+          </button>
+        )}
+        {options.rematch && (
+          <button className={`btn full-btn${options.next ? '' : ' btn-primary'}`} onClick={onRematch}>
+            {rematchLabel}
+          </button>
+        )}
+        {options.next && (
+          <button className="btn btn-primary full-btn" onClick={onNext}>
+            {reinforce && cur.boss
+              ? '補強を終えてボス報酬へ'
+              : lastGame && reinforce
                 ? 'ゲーム終了へ'
                 : reinforce
                   ? '補強を終えて次の試合へ'
-                  : '次の試合へ'}
-        </button>
+                  : '次戦に進む'}
+          </button>
+        )}
       </div>
     </>
   );
@@ -225,7 +264,7 @@ export function EndScreen({ run, onRestart }: { run: RunState; onRestart: () => 
       <section className="card">
         <p className={`outcome ${finished ? 'win' : 'loss'}`}>{finished ? '100戦完走！' : 'ゲームオーバー'}</p>
         <p className="points-line">
-          {finished ? '全100試合を戦い抜きました。' : `ライフが尽きました（第${run.history.length}戦まで）。`}
+          {finished ? '全100試合を戦い抜きました。' : `ライフが尽きました（第${run.gameNumber}戦まで）。`}
           {run.record.wins}勝{run.record.losses}敗{run.record.draws}分
         </p>
         <p className="hint">チームの登録はフェーズ7で実装します。</p>
@@ -234,9 +273,10 @@ export function EndScreen({ run, onRestart }: { run: RunState; onRestart: () => 
       <section className="card">
         <h2>試合の記録</h2>
         <ol className="history">
-          {run.history.map((h) => (
-            <li key={h.gameNumber}>
-              第{h.gameNumber}戦{h.boss ? '（ボス）' : ''} {h.outcome === 'win' ? '○' : h.outcome === 'loss' ? '●' : '△'} {h.score.mine}-{h.score.opponent}
+          {run.history.map((h, i) => (
+            <li key={i}>
+              第{h.gameNumber}戦{h.boss ? '（ボス）' : ''}
+              {h.rematch ? '（再戦）' : ''} {h.outcome === 'win' ? '○' : h.outcome === 'loss' ? '●' : '△'} {h.score.mine}-{h.score.opponent}
             </li>
           ))}
         </ol>

@@ -59,11 +59,15 @@ export const POLICY_LABELS: Record<ReinforcePolicy, string> = {
 export interface Bot {
   plan: 'ai' | 'optimized';
   reinforce: ReinforcePolicy;
+  /** 通常戦の敗北・引き分けのあと：never＝次戦に進む（既定）、always＝再戦する。ボス戦は常に再戦 */
+  rematch?: 'never' | 'always';
 }
 
 export interface RunOutcome {
-  /** 戦った試合数 */
+  /** 到達した試合番号（再戦は数えない） */
   reached: number;
+  /** 再戦した回数 */
+  rematches: number;
   finished: boolean;
   wins: number;
   losses: number;
@@ -137,14 +141,17 @@ export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RU
     life: rules.initialLife,
   };
   const out: RunOutcome = {
-    reached: 0, finished: false, wins: 0, losses: 0, draws: 0, livesBought: 0, playersAcquired: 0, bossWins: 0, finalAverage: 0, finalPoints: 0,
+    reached: 0, rematches: 0, finished: false, wins: 0, losses: 0, draws: 0, livesBought: 0, playersAcquired: 0, bossWins: 0, finalAverage: 0, finalPoints: 0,
   };
   let plan: GamePlan | null = null;
   let planKey = '';
   // 作戦を作り直す条件：optimized は能力が変わったら（ボス報酬など）、ai は顔ぶれが変わったときだけ（実際のゲームと同じく作戦を引き継ぐ）
   const rosterKey = () => st.roster.map((p) => (bot.plan === 'optimized' ? `${p.id}:${calcOverall(p)}` : p.id)).join(',');
 
-  for (let gameNumber = 1; gameNumber <= rules.totalGames; gameNumber++) {
+  // 再戦（SPEC 5.6）：同じ相手（選手・作戦）。ボス戦は勝つまで再戦、通常戦は bot.rematch に従う
+  let rematch: { opponent: Player[]; plan: GamePlan } | null = null;
+  let gameNumber = 1;
+  for (let guard = 0; guard < rules.totalGames * 20; guard++) {
     const stage = Math.floor((gameNumber - 1) / OPPONENT.gamesPerStage);
     const boss = gameNumber % OPPONENT.gamesPerStage === 0;
     const average = (boss ? rules.bossBase : rules.normalBase) + rules.step * stage;
@@ -152,9 +159,15 @@ export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RU
       plan = bot.plan === 'optimized' ? optimizedPlan(st.roster) : buildAutoPlan(st.roster);
       planKey = rosterKey();
     }
-    // run.ts の playGame と同じ順序で乱数を使う
-    const opponent = generateOpponentRoster(rng, average);
-    const enemyPlan = rules.enemyPlan === 'random' ? randomPlan(opponent, new Rng(seed * 1009 + gameNumber)) : buildAutoPlan(opponent);
+    // run.ts の playGame と同じ順序で乱数を使う（再戦では相手を生成しない）
+    const opponent: Player[] = rematch ? rematch.opponent : generateOpponentRoster(rng, average);
+    const enemyPlan: GamePlan = rematch
+      ? rematch.plan
+      : rules.enemyPlan === 'random'
+        ? randomPlan(opponent, new Rng(seed * 1009 + gameNumber))
+        : buildAutoPlan(opponent);
+    if (rematch) out.rematches++;
+    rematch = null;
     const mine: TeamEntry = { name: 'mine', players: st.roster, plan: plan! };
     const opp: TeamEntry = { name: 'enemy', players: opponent, plan: enemyPlan };
     const side: 'away' | 'home' = rng.next() < 0.5 ? 'away' : 'home';
@@ -174,12 +187,20 @@ export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RU
         st.roster = st.roster.map((p) => (p.id === target.id ? player : p));
         st.life += rules.lifeOnBossWin;
       }
-    } else if (outcome === 'loss') {
+      if (gameNumber === rules.totalGames) {
+        out.finished = true;
+        break;
+      }
+      gameNumber++;
+      continue;
+    }
+    if (outcome === 'loss') {
       out.losses++;
       st.life--;
       if (st.life <= 0) break;
     } else out.draws++;
-    if (gameNumber === rules.totalGames) out.finished = true;
+    if (boss || bot.rematch === 'always') rematch = { opponent, plan: enemyPlan };
+    else gameNumber++;
   }
   out.finalAverage = avg(st.roster);
   out.finalPoints = st.points;

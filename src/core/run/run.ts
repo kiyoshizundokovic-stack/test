@@ -81,6 +81,7 @@ export function createRun(seed: number): RunState {
     record: { wins: 0, losses: 0, draws: 0 },
     history: [],
     current: null,
+    rematch: null,
   };
 }
 
@@ -105,28 +106,31 @@ export function playGame(state: RunState): RunState {
   const errors = validatePlan(state.plan, state.roster);
   if (errors.length > 0) throw new RunError(`作戦に問題があります：${errors.join(' / ')}`);
 
-  const { boss, average } = stageOf(state.gameNumber);
+  // 再戦なら保存しておいた相手（選手・作戦）をそのまま使い、そうでなければ強さの段階に応じて生成する
+  const setup = state.rematch;
+  const { boss, average } = setup ? { boss: setup.boss, average: setup.targetAverage } : stageOf(state.gameNumber);
   const { value, rngState } = withRng(state, (rng) => {
-    const opponent = generateOpponentRoster(rng, average);
+    const opponent = setup ? setup.opponent : generateOpponentRoster(rng, average);
+    const opponentPlan = setup ? setup.opponentPlan : buildAutoPlan(opponent);
+    const opponentName = setup ? setup.opponentName : `${boss ? 'ボス' : '相手'}（第${state.gameNumber}戦）`;
     const mine: TeamEntry = { name: MY_TEAM_NAME, players: state.roster, plan: state.plan };
-    const opp: TeamEntry = {
-      name: `${boss ? 'ボス' : '相手'}（第${state.gameNumber}戦）`,
-      players: opponent,
-      plan: buildAutoPlan(opponent),
-    };
+    const opp: TeamEntry = { name: opponentName, players: opponent, plan: opponentPlan };
     const side: 'away' | 'home' = rng.next() < 0.5 ? 'away' : 'home';
     const [away, home] = side === 'away' ? [mine, opp] : [opp, mine];
     const game = simulateGame(away, home, rng.int(0, 0x7fffffff));
-    return { opponent, side, game };
+    return { opponent, opponentPlan, opponentName, side, game };
   });
 
-  const { opponent, side, game } = value;
+  const { opponent, opponentPlan, opponentName, side, game } = value;
   const other = side === 'away' ? 'home' : 'away';
   const outcome: Outcome = game.winner === 'draw' ? 'draw' : game.winner === side ? 'win' : 'loss';
   const pointsGained = outcome === 'win' ? winPoints(opponent) : 0;
   const current: CurrentGame = {
     gameNumber: state.gameNumber,
     boss,
+    rematch: setup !== null,
+    opponentName,
+    opponentPlan,
     targetAverage: average,
     opponentAverage: averageOverall(opponent),
     opponent,
@@ -139,6 +143,7 @@ export function playGame(state: RunState): RunState {
   const summary: GameSummary = {
     gameNumber: state.gameNumber,
     boss,
+    rematch: setup !== null,
     opponentAverage: current.opponentAverage,
     side,
     score: { mine: game.score[side], opponent: game.score[other] },
@@ -158,6 +163,7 @@ export function playGame(state: RunState): RunState {
     },
     history: [...state.history, summary],
     current,
+    rematch: null,
     planNotes: [],
   };
 }
@@ -242,14 +248,61 @@ function proceed(state: RunState): RunState {
   return { ...state, status: 'strategy', gameNumber: state.gameNumber + 1, plan, planNotes: notes, current: null };
 }
 
+/** 試合結果のあとに選べる操作（SPEC 5.6） */
+export interface ResultOptions {
+  /** 次の試合へ進める（勝利、または通常戦の敗北・引き分け） */
+  next: boolean;
+  /** 同じ相手と再戦できる（敗北・引き分けでライフが残っている） */
+  rematch: boolean;
+  /** ライフ0でゲーム終了 */
+  gameOver: boolean;
+}
+
+export function resultOptions(state: RunState): ResultOptions {
+  const cur = state.current;
+  if (state.status !== 'result' || !cur) return { next: false, rematch: false, gameOver: false };
+  if (cur.outcome === 'win') return { next: true, rematch: false, gameOver: false };
+  if (state.life <= 0) return { next: false, rematch: false, gameOver: true };
+  // ボス戦は勝たないと次に進めない（敗北はリベンジ、引き分けは再戦のみ）
+  return { next: !cur.boss, rematch: true, gameOver: false };
+}
+
 /**
- * 結果画面を終える。ボス戦に勝っていれば特別報酬へ、それ以外は次の試合へ（または終了）。
+ * 結果画面を終えて先へ進む（「次戦に進む」）。ボス戦に勝っていれば特別報酬へ、それ以外は次の試合へ（または終了）。
+ * ボス戦の敗北・引き分けでは使えない（再戦のみ）。ライフ0ならゲームオーバー。
  */
 export function finishResult(state: RunState): RunState {
   assertStatus(state, 'result');
   const cur = state.current!;
+  const options = resultOptions(state);
+  if (options.gameOver) return { ...state, status: 'gameover' };
+  if (!options.next) throw new RunError('ボス戦は勝たないと次に進めません（再戦してください）');
   if (cur.outcome === 'win' && cur.boss) return { ...state, status: 'bossReward' };
   return proceed(state);
+}
+
+/**
+ * 同じ相手と再戦する（敗北後のリベンジ・引き分け後の再戦）。試合数・強さ段階は進めない。
+ * 作戦の変更はできる（試合前の画面に戻る）。補強はできない。
+ */
+export function startRematch(state: RunState): RunState {
+  assertStatus(state, 'result');
+  if (!resultOptions(state).rematch) throw new RunError('再戦できません');
+  const cur = state.current!;
+  return {
+    ...state,
+    status: 'strategy',
+    current: null,
+    planNotes: [],
+    rematch: {
+      gameNumber: cur.gameNumber,
+      boss: cur.boss,
+      targetAverage: cur.targetAverage,
+      opponentName: cur.opponentName,
+      opponent: cur.opponent,
+      opponentPlan: cur.opponentPlan,
+    },
+  };
 }
 
 /** ボス報酬で選手の能力がどう変わるか（実際の強化は applyBossReward。球種の強化先は乱数で決まる） */

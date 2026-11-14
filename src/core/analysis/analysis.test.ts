@@ -4,7 +4,7 @@ import { playersOnField } from '../game/planEdit';
 import { generatePlayers } from '../generate';
 import { calcOverall } from '../overall';
 import { Rng } from '../rng';
-import { applyBossReward, createRun, finishResult, playGame, showResult } from '../run/run';
+import { applyBossReward, createRun, finishResult, playGame, resultOptions, showResult, startRematch } from '../run/run';
 import type { RunState } from '../run/types';
 import { generateOpponentRoster } from '../team';
 import { runMatchup } from './matchups';
@@ -57,20 +57,32 @@ describe('分析用の作戦ボット', () => {
 });
 
 describe('ローグライクのシミュレーター', () => {
-  it('既定の規則・補強なしなら run.ts の通しプレイと同じ結果になる', () => {
+  it('既定の規則・補強なしなら run.ts の通しプレイと同じ結果になる（再戦を含む）', () => {
+    // ボス戦の再戦も通るよう、ライフを多めにした両者で比べる
+    let bossRematches = 0;
     for (const seed of [1, 2, 3, 4, 5]) {
-      // run.ts：補強せず、ボス報酬は総合力の最も高い選手
-      let s: RunState = createRun(seed);
-      while (s.status !== 'gameover' && s.status !== 'finished') {
-        if (s.status === 'strategy') s = playGame(s);
-        else if (s.status === 'game') s = showResult(s);
-        else if (s.status === 'result') s = finishResult(s);
-        else if (s.status === 'bossReward') s = applyBossReward(s, [...s.roster].sort((a, b) => calcOverall(b) - calcOverall(a))[0]!.id);
+      for (const rematch of ['never', 'always'] as const) {
+        // run.ts：補強せず、ボス報酬は総合力の最も高い選手。通常戦の敗北・引き分けの後は rematch に従う
+        let s: RunState = { ...createRun(seed), life: 10 };
+        while (s.status !== 'gameover' && s.status !== 'finished') {
+          if (s.status === 'strategy') s = playGame(s);
+          else if (s.status === 'game') s = showResult(s);
+          else if (s.status === 'result') {
+            const o = resultOptions(s);
+            if (o.gameOver || (o.next && (s.current!.outcome === 'win' || rematch === 'never'))) s = finishResult(s);
+            else {
+              if (s.current!.boss) bossRematches++;
+              s = startRematch(s);
+            }
+          } else if (s.status === 'bossReward') s = applyBossReward(s, [...s.roster].sort((a, b) => calcOverall(b) - calcOverall(a))[0]!.id);
+        }
+        const sim = simulateRun(seed, { plan: 'ai', reinforce: 'none', rematch }, { ...DEFAULT_RULES, initialLife: 10 });
+        expect(sim.reached).toBe(s.gameNumber);
+        expect([sim.wins, sim.losses, sim.draws]).toEqual([s.record.wins, s.record.losses, s.record.draws]);
+        expect(sim.rematches).toBe(s.history.filter((h) => h.rematch).length);
+        expect(sim.finished).toBe(s.status === 'finished');
       }
-      const sim = simulateRun(seed, { plan: 'ai', reinforce: 'none' }, DEFAULT_RULES);
-      expect(sim.reached).toBe(s.history.length);
-      expect([sim.wins, sim.losses, sim.draws]).toEqual([s.record.wins, s.record.losses, s.record.draws]);
-      expect(sim.finished).toBe(s.status === 'finished');
     }
+    expect(bossRematches).toBeGreaterThan(0);
   });
 });

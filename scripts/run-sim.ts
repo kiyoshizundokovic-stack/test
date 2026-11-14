@@ -20,7 +20,9 @@ import {
   playGame,
   sellBlocker,
   sellPlayer,
+  resultOptions,
   showResult,
+  startRematch,
   type RunState,
 } from '../src/core';
 
@@ -44,7 +46,8 @@ function autoPlay(seed: number): RunState {
           if (!acquireBlocker(s, best.id)) s = acquirePlayer(s, best.id);
         }
       }
-      s = finishResult(s);
+      // 通常戦の敗北・引き分けは次戦に進む。ボス戦は勝つまで再戦（ライフ0ならゲーム終了）
+      s = resultOptions(s).next || resultOptions(s).gameOver ? finishResult(s) : startRematch(s);
     } else if (s.status === 'bossReward') {
       const best = [...s.roster].sort((a, b) => calcOverall(b) - calcOverall(a))[0]!;
       s = applyBossReward(s, best.id);
@@ -54,7 +57,7 @@ function autoPlay(seed: number): RunState {
 }
 
 const results = Array.from({ length: runs }, (_, i) => autoPlay(seed0 + i));
-const reached = results.map((r) => r.history.length);
+const reached = results.map((r) => r.gameNumber);
 const finished = results.filter((r) => r.status === 'finished').length;
 const pct = (n: number) => `${((n / runs) * 100).toFixed(1)}%`;
 console.log(`${runs}ラン（開始シード ${seed0}）`);

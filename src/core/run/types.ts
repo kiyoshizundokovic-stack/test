@@ -15,9 +15,21 @@ export type RunStatus = 'strategy' | 'game' | 'result' | 'bossReward' | 'gameove
 
 export type Outcome = 'win' | 'loss' | 'draw';
 
+/** 再戦する相手（SPEC 5.6）。選手・打順・守備配置・継投をそのまま再現する */
+export interface RematchSetup {
+  gameNumber: number;
+  boss: boolean;
+  targetAverage: number;
+  opponentName: string;
+  opponent: Player[];
+  opponentPlan: GamePlan;
+}
+
 export interface GameSummary {
   gameNumber: number;
   boss: boolean;
+  /** 同じ相手との再戦（敗北後のリベンジ・引き分け後の再戦）。試合数には数えない */
+  rematch: boolean;
   opponentAverage: number;
   side: 'away' | 'home';
   score: { mine: number; opponent: number };
@@ -29,6 +41,11 @@ export interface GameSummary {
 export interface CurrentGame {
   gameNumber: number;
   boss: boolean;
+  /** 再戦だったか */
+  rematch: boolean;
+  opponentName: string;
+  /** 相手の作戦（再戦ではこれをそのまま使う） */
+  opponentPlan: GamePlan;
   /** 相手の総合力の平均目標（段階で決まる値） */
   targetAverage: number;
   /** 相手選手の総合力の実際の平均（勝利ポイントの計算に使う） */
@@ -60,6 +77,8 @@ export interface RunState {
   record: { wins: number; losses: number; draws: number };
   history: GameSummary[];
   current: CurrentGame | null;
+  /** 次の試合が再戦の場合の相手（選手・作戦がまったく同じ）。通常は null */
+  rematch: RematchSetup | null;
   /** ボス報酬の結果（直近） */
   lastBossReward?: { playerId: string; changes: string[] };
 }

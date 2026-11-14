@@ -6,6 +6,7 @@ import {
   playGame,
   setPlan,
   showResult,
+  startRematch,
   validatePlan,
   type RunState,
 } from './core';
@@ -34,7 +35,10 @@ export function App() {
     return (
       <main className="app">
         <header className="app-header">
-          <h1>第{cur.gameNumber}戦{cur.boss ? '（ボス戦）' : ''}</h1>
+          <h1>
+            第{cur.gameNumber}戦{cur.boss ? '（ボス戦）' : ''}
+            {cur.rematch ? '・再戦' : ''}
+          </h1>
           <span className="muted small">
             先攻 {cur.game.away.name}／後攻 {cur.game.home.name}
           </span>
@@ -56,6 +60,10 @@ export function App() {
           onNext={() => {
             setTab('home');
             update(finishResult(run));
+          }}
+          onRematch={() => {
+            setTab('home');
+            update(startRematch(run));
           }}
         />
       </main>
@@ -137,13 +145,13 @@ export function App() {
         <>
           <StatusTiles run={run} />
           <section className="card">
-            <NextOpponent gameNumber={run.gameNumber} />
+            <NextOpponent run={run} />
             {run.lastBossReward && run.history.length > 0 && run.history[run.history.length - 1]!.boss && (
               <p className="small muted">ボス報酬：{run.lastBossReward.changes.join('、')}</p>
             )}
             {run.history.length > 0 && (
               <p className="small muted">
-                前の試合：第{run.history.at(-1)!.gameNumber}戦{' '}
+                前の試合：第{run.history.at(-1)!.gameNumber}戦{run.history.at(-1)!.rematch ? '（再戦）' : ''}{' '}
                 {run.history.at(-1)!.outcome === 'win' ? '勝利' : run.history.at(-1)!.outcome === 'loss' ? '敗北' : '引き分け'}{' '}
                 {run.history.at(-1)!.score.mine}-{run.history.at(-1)!.score.opponent}
               </p>
@@ -157,7 +165,11 @@ export function App() {
 
       <div className="start-bar">
         <button className="btn btn-primary full-btn" disabled={planErrors.length > 0} onClick={() => update(playGame(run))}>
-          {planErrors.length > 0 ? '作戦に問題があります（「作戦」で修正してください）' : `第${run.gameNumber}戦を開始`}
+          {planErrors.length > 0
+            ? '作戦に問題があります（「作戦」で修正してください）'
+            : run.rematch
+              ? `第${run.gameNumber}戦の再戦を開始`
+              : `第${run.gameNumber}戦を開始`}
         </button>
       </div>
     </main>

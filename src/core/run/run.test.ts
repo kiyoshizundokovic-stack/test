@@ -28,8 +28,12 @@ import {
   RunError,
   sellBlocker,
   sellPlayer,
+  canReinforce,
+  resultOptions,
+  setPlan,
   showResult,
   stageOf,
+  startRematch,
   winPoints,
 } from './run';
 import type { RunState } from './types';
@@ -150,9 +154,9 @@ describe('ローグライク進行', () => {
   it('ライフ0でゲームオーバー', () => {
     let s = createRun(3);
     s = { ...s, life: 1 };
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 300; i++) {
       s = showResult(playGame(s));
-      s = finishResult(s);
+      s = resultOptions(s).next || resultOptions(s).gameOver ? finishResult(s) : startRematch(s);
       if (s.status === 'bossReward') s = applyBossReward(s, s.roster[0]!.id);
       if (s.status === 'gameover' || s.status === 'finished') break;
     }
@@ -160,20 +164,32 @@ describe('ローグライク進行', () => {
     expect(s.life).toBe(0);
   });
 
-  it('100戦目の後は勝敗にかかわらず終了する（ボス戦勝利なら特別報酬の後）', () => {
-    const base = createRun(5);
-    for (let seed = 0; seed < 60; seed++) {
+  it('100戦目（ボス戦）は勝たないと終了しない：勝利なら特別報酬の後に完走、敗北・引き分けは再戦のみ', () => {
+    // 100戦目の相手（平均1100）と勝負になるよう、自チームも同程度の強さにする
+    const roster = generatePlayers(new Rng(6), 12, { targetOverall: 1100 });
+    const base = { ...createRun(5), roster, plan: buildAutoPlan(roster) };
+    const seen = { win: false, loss: false, draw: false };
+    for (let seed = 0; seed < 200; seed++) {
       let s: RunState = { ...base, gameNumber: 100, life: 5, rngState: seed };
       s = showResult(playGame(s));
       const outcome = s.current!.outcome;
-      s = finishResult(s);
+      seen[outcome] = true;
+      const opts = resultOptions(s);
       if (outcome === 'win') {
+        expect(opts).toEqual({ next: true, rematch: false, gameOver: false });
+        s = finishResult(s);
         expect(s.status).toBe('bossReward');
         s = applyBossReward(s, s.roster[0]!.id);
+        expect(s.status).toBe('finished');
+      } else {
+        expect(opts).toEqual({ next: false, rematch: true, gameOver: false });
+        expect(() => finishResult(s)).toThrow(RunError);
+        s = startRematch(s);
+        expect(s.status).toBe('strategy');
+        expect(s.gameNumber).toBe(100);
       }
-      expect(s.status).toBe('finished');
-      expect(s.gameNumber).toBe(100);
     }
+    expect(seen).toEqual({ win: true, loss: true, draw: true });
   });
 
   it('ボス報酬：各能力+10（球速+3km/h、球種合計+3）。上限は超えない', () => {
@@ -215,6 +231,92 @@ describe('ローグライク進行', () => {
   });
 });
 
+describe('リベンジ・再戦（SPEC 5.6）', () => {
+  /** 指定した結果になるまで試合を行う（試合番号は gameNumber で指定） */
+  function until(outcome: 'win' | 'loss' | 'draw', gameNumber: number, life = 5): RunState {
+    for (let seed = 0; seed < 300; seed++) {
+      const s = showResult(playGame({ ...createRun(9), gameNumber, life, rngState: seed }));
+      if (s.current!.outcome === outcome) return s;
+    }
+    throw new Error('not found');
+  }
+
+  it('通常戦の敗北：ライフ−1のうえで「次戦に進む」「リベンジ」を選べる', () => {
+    const s = until('loss', 3);
+    expect(s.life).toBe(4);
+    expect(resultOptions(s)).toEqual({ next: true, rematch: true, gameOver: false });
+    expect(finishResult(s).gameNumber).toBe(4);
+    expect(startRematch(s).gameNumber).toBe(3);
+  });
+
+  it('通常戦の引き分け：ライフは減らず「次戦に進む」「再戦」を選べる', () => {
+    const s = until('draw', 3);
+    expect(s.life).toBe(5);
+    expect(resultOptions(s)).toEqual({ next: true, rematch: true, gameOver: false });
+  });
+
+  it('ボス戦の敗北・引き分け：再戦のみ（次に進めない）', () => {
+    for (const o of ['loss', 'draw'] as const) {
+      const s = until(o, 10);
+      expect(resultOptions(s)).toEqual({ next: false, rematch: true, gameOver: false });
+      expect(() => finishResult(s)).toThrow(/ボス戦は勝たないと/);
+    }
+  });
+
+  it('ライフ0になった敗北は選択肢なしでゲーム終了', () => {
+    const s = until('loss', 3, 1);
+    expect(s.life).toBe(0);
+    expect(resultOptions(s)).toEqual({ next: false, rematch: false, gameOver: true });
+    expect(() => startRematch(s)).toThrow(RunError);
+    expect(finishResult(s).status).toBe('gameover');
+  });
+
+  it('再戦は選手・打順・守備配置・継投がまったく同じ相手で、乱数は新しい。試合数・強さ段階は進まない', () => {
+    const lost = until('loss', 10);
+    const first = lost.current!;
+    let s = startRematch(lost);
+    expect(s.rematch!.opponent).toEqual(first.opponent);
+    expect(s.rematch!.opponentPlan).toEqual(first.opponentPlan);
+    s = showResult(playGame(s));
+    const second = s.current!;
+    expect(second.rematch).toBe(true);
+    expect(second.gameNumber).toBe(10);
+    expect(second.boss).toBe(true);
+    expect(second.opponent).toEqual(first.opponent);
+    expect(second.opponentPlan).toEqual(first.opponentPlan);
+    expect(second.opponentName).toBe(first.opponentName);
+    expect(second.game.events).not.toEqual(first.game.events);
+    expect(s.history.at(-1)!.rematch).toBe(true);
+    expect(s.history.at(-2)!.rematch).toBe(false);
+    expect(s.record.wins + s.record.losses + s.record.draws).toBe(2); // 戦績には含める
+  });
+
+  it('再戦の前に作戦を変更でき、勝てば通常どおり報酬（ボス戦なら特別報酬）が出る', () => {
+    // ボス戦の再戦で勝つまで繰り返す
+    let s = startRematch(until('loss', 10, 50));
+    const swapped = { ...s.plan, stages: s.plan.stages.map((st) => ({ ...st, lineup: [st.lineup[1]!, st.lineup[0]!, ...st.lineup.slice(2)] })) };
+    s = setPlan(s, swapped);
+    expect(s.plan).toEqual(swapped);
+    for (let i = 0; i < 50; i++) {
+      const before = s.points;
+      s = showResult(playGame(s));
+      if (s.current!.outcome === 'win') {
+        expect(s.points).toBe(before + winPoints(s.current!.opponent));
+        expect(canReinforce(s)).toBe(true);
+        s = finishResult(s);
+        expect(s.status).toBe('bossReward');
+        s = applyBossReward(s, s.roster[0]!.id);
+        expect(s.status).toBe('strategy');
+        expect(s.gameNumber).toBe(11);
+        expect(s.rematch).toBeNull();
+        return;
+      }
+      s = startRematch(s);
+    }
+    throw new Error('勝てなかった');
+  });
+});
+
 describe('作戦の補正（reconcilePlan）', () => {
   it('選手が変わっていなければそのまま', () => {
     const s = createRun(2);
@@ -253,7 +355,7 @@ describe('100戦の通しプレイ', () => {
             if (!acquireBlocker(s, best.id)) s = acquirePlayer(s, best.id);
           }
         }
-        s = finishResult(s);
+        s = resultOptions(s).next || resultOptions(s).gameOver ? finishResult(s) : startRematch(s);
       } else if (s.status === 'bossReward') s = applyBossReward(s, s.roster[0]!.id);
       expect(s.roster.length).toBeGreaterThanOrEqual(MIN_ROSTER_SIZE);
       expect(s.roster.length).toBeLessThanOrEqual(MAX_ROSTER_SIZE);
@@ -262,6 +364,7 @@ describe('100戦の通しプレイ', () => {
     }
     expect(['gameover', 'finished']).toContain(s.status);
     expect(s.record.wins + s.record.losses + s.record.draws).toBe(s.history.length);
+    expect(s.history.filter((h) => !h.rematch).length).toBe(s.gameNumber);
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
   });
 });

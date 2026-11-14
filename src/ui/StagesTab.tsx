@@ -16,6 +16,7 @@ import {
   type Position,
 } from '../core';
 import { FieldingAbilities, PitchingAbilities } from './abilities';
+import { StockBadge } from './PlayerCard';
 
 interface Props {
   plan: GamePlan;
@@ -23,16 +24,17 @@ interface Props {
   players: Map<string, Player>;
   issues: PlanIssue[];
   stageIndex: number;
+  stockIds: ReadonlySet<string>;
   onSelectStage: (index: number) => void;
   onChange: (plan: GamePlan) => void;
 }
 
 /** 継投と守備位置（段階ごとに9つの守備位置を設定する） */
-export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectStage, onChange }: Props) {
+export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectStage, onChange, stockIds }: Props) {
   const stage = plan.stages[stageIndex]!;
   const prev = plan.stages[stageIndex - 1];
   const isLast = stageIndex === plan.stages.length - 1;
-  const name = (id: string) => fullName(players.get(id)!.name);
+  const name = (id: string) => fullName(players.get(id)!.name) + (stockIds.has(id) ? '・ストック' : '');
   const pitcher = players.get(stage.positions.P)!;
   const stageIssues = issues.filter((i) => i.stage === stageIndex);
 
@@ -71,7 +73,7 @@ export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectS
           <optgroup label="出場中（守備位置を入れ替え）">
             {inStage.map((p) => (
               <option key={p.id} value={p.id}>
-                {fullName(p.name)}（{POSITION_LABELS[positionOf(stage, p.id)!]}）
+                {name(p.id)}（{POSITION_LABELS[positionOf(stage, p.id)!]}）
               </option>
             ))}
           </optgroup>
@@ -80,7 +82,7 @@ export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectS
           <optgroup label="この段階で退く選手（出場を続けさせる）">
             {leaving.map((p) => (
               <option key={p.id} value={p.id}>
-                {fullName(p.name)}（{POSITION_LABELS[positionOf(prev!, p.id)!]}）
+                {name(p.id)}（{POSITION_LABELS[positionOf(prev!, p.id)!]}）
               </option>
             ))}
           </optgroup>
@@ -89,7 +91,7 @@ export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectS
           <optgroup label="控え（交代で出場）">
             {bench.map((p) => (
               <option key={p.id} value={p.id}>
-                {fullName(p.name)}
+                {name(p.id)}
               </option>
             ))}
           </optgroup>
@@ -98,7 +100,7 @@ export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectS
           <optgroup label="退いた選手（再出場不可）">
             {removed.map((p) => (
               <option key={p.id} value={p.id} disabled>
-                {fullName(p.name)}
+                {name(p.id)}
               </option>
             ))}
           </optgroup>
@@ -225,7 +227,7 @@ export function StagesTab({ plan, roster, players, issues, stageIndex, onSelectS
                 >
                   {options(pos)}
                 </select>
-                {pos === 'P' ? <PitchingAbilities p={p} /> : <FieldingAbilities p={p} />}
+                {stockIds.has(id) && <StockBadge />} {pos === 'P' ? <PitchingAbilities p={p} /> : <FieldingAbilities p={p} />}
               </div>
             </div>
           );

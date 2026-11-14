@@ -7,10 +7,12 @@ interface Props {
   roster: readonly Player[];
   plan: GamePlan;
   onChange: (plan: GamePlan) => void;
+  /** ストックから連れて行った選手（目印を付ける） */
+  stockIds?: ReadonlySet<string>;
 }
 
 /** 作戦設定（SPEC 4）：打順／継投段階ごとの守備配置 */
-export function StrategyEditor({ roster, plan, onChange }: Props) {
+export function StrategyEditor({ roster, plan, onChange, stockIds = new Set() }: Props) {
   const [tab, setTab] = useState<'order' | 'stages'>('order');
   const [stageIndex, setStageIndex] = useState(0);
   const players = useMemo(() => new Map(roster.map((p) => [p.id, p])), [roster]);
@@ -40,7 +42,7 @@ export function StrategyEditor({ roster, plan, onChange }: Props) {
         </button>
       </div>
       {tab === 'order' ? (
-        <BattingOrderTab plan={plan} players={players} onChange={onChange} />
+        <BattingOrderTab plan={plan} players={players} onChange={onChange} stockIds={stockIds} />
       ) : (
         <StagesTab
           plan={plan}
@@ -48,6 +50,7 @@ export function StrategyEditor({ roster, plan, onChange }: Props) {
           players={players}
           issues={issues}
           stageIndex={safeStage}
+          stockIds={stockIds}
           onSelectStage={setStageIndex}
           onChange={onChange}
         />

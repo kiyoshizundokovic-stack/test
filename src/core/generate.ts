@@ -34,6 +34,11 @@ export interface GeneratePlayerOptions {
   archetype?: ArchetypeKey;
   /** 重複させたくない名前（フルネーム） */
   takenNames?: ReadonlySet<string>;
+  /**
+   * 選手IDの作り方。ゲームのプレイ中は「プレイID＋通し番号」で一意にする（run/ids.ts）。
+   * 省略時は乱数から作る（テスト・検証スクリプト用。プレイをまたいだ一意性は保証しない）
+   */
+  idFactory?: () => string;
 }
 
 type Slot = keyof ArchetypeWeights;
@@ -141,7 +146,7 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
     diff -= step * weights[slot];
   }
 
-  const id = generateId(rng);
+  const id = options.idFactory ? options.idFactory() : generateId(rng);
   const name = generateUniqueName(rng, options.takenNames ?? new Set());
   const pitches = generatePitches(rng, values.pitches, g.pitchValuePerPitch);
 
@@ -174,12 +179,16 @@ export function generatePlayer(rng: Rng, options: GeneratePlayerOptions = {}): P
 export function generatePlayers(
   rng: Rng,
   count: number,
-  options: Omit<GeneratePlayerOptions, 'takenNames'> = {},
+  options: Omit<GeneratePlayerOptions, 'takenNames'> & {
+    /** 重複させたくない既存の名前（フルネーム。ストックから連れて行く選手など） */
+    avoidNames?: ReadonlySet<string>;
+  } = {},
 ): Player[] {
-  const taken = new Set<string>();
+  const { avoidNames, ...rest } = options;
+  const taken = new Set<string>(avoidNames ?? []);
   const players: Player[] = [];
   for (let i = 0; i < count; i++) {
-    const p = generatePlayer(rng, { ...options, takenNames: taken });
+    const p = generatePlayer(rng, { ...rest, takenNames: taken });
     taken.add(fullName(p.name));
     players.push(p);
   }

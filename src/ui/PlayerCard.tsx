@@ -38,15 +38,39 @@ export function PlayerDetail({ p }: { p: Player }) {
   );
 }
 
+/** 「ストック」の目印（ストックから連れて行った選手） */
+export function StockBadge({ label = 'ストック' }: { label?: string }) {
+  return <span className="badge-stock">{label}</span>;
+}
+
 /** 選手一覧の1行（タップで詳細を開閉）。actions に獲得・売却などのボタンを渡す */
-export function PlayerRow({ p, actions, note }: { p: Player; actions?: ReactNode; note?: ReactNode }) {
+export function PlayerRow({
+  p,
+  actions,
+  note,
+  badge,
+  leading,
+  extra,
+}: {
+  p: Player;
+  actions?: ReactNode;
+  note?: ReactNode;
+  /** 名前の横の目印（「ストック」など） */
+  badge?: string;
+  /** 行の左側（チェックボックス・お気に入りなど） */
+  leading?: ReactNode;
+  /** 詳細を開いたときに能力表の下に出す内容 */
+  extra?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <li className="player-row">
       <div className="player-row-main">
+        {leading}
         <button className="player-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <span className="player-name">
-            {fullName(p.name)} <span className="overall">総合 {calcOverall(p)}</span>
+            {fullName(p.name)} {badge && <StockBadge label={badge} />}
+            <span className="overall">総合 {calcOverall(p)}</span>
           </span>
           <BattingAbilities p={p} />
           <PitchingAbilities p={p} />
@@ -54,7 +78,12 @@ export function PlayerRow({ p, actions, note }: { p: Player; actions?: ReactNode
         {actions && <div className="player-actions">{actions}</div>}
       </div>
       {note && <div className="player-note">{note}</div>}
-      {open && <PlayerDetail p={p} />}
+      {open && (
+        <>
+          <PlayerDetail p={p} />
+          {extra}
+        </>
+      )}
     </li>
   );
 }

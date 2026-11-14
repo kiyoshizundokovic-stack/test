@@ -14,15 +14,17 @@ import {
   type StealPolicy,
 } from '../core';
 import { BattingAbilities } from './abilities';
+import { StockBadge } from './PlayerCard';
 
 interface Props {
   plan: GamePlan;
   players: Map<string, Player>;
   onChange: (plan: GamePlan) => void;
+  stockIds: ReadonlySet<string>;
 }
 
 /** 打順（先発の段階の打順。打順は人に紐づくので継投段階にもそのまま反映される） */
-export function BattingOrderTab({ plan, players, onChange }: Props) {
+export function BattingOrderTab({ plan, players, onChange, stockIds }: Props) {
   const [selected, setSelected] = useState<number | null>(null);
   const stage = plan.stages[0]!;
 
@@ -55,7 +57,7 @@ export function BattingOrderTab({ plan, players, onChange }: Props) {
               <span className="slot">{slot + 1}</span>
               <span className={`pos-badge${pos === 'P' ? ' pitcher' : ''}`}>{POSITION_LABELS[pos]}</span>
               <span className="name">
-                {fullName(p.name)}
+                {fullName(p.name)} {stockIds.has(id) && <StockBadge />}
                 <br />
                 <BattingAbilities p={p} />
                 <br />

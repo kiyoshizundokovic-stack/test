@@ -12,7 +12,13 @@ import {
   LIFE_PRICE,
   MAX_ROSTER_SIZE,
   bossRewardBlocker,
+  buyBack,
+  buyBackBlocker,
+  finishBlocker,
   isStockPlayer,
+  positionSummary,
+  reinforcementChanged,
+  resetReinforcement,
   OPPONENT,
   resultOptions,
   sellBlocker,
@@ -21,6 +27,7 @@ import {
   type RunState,
   type StockData,
 } from '../core';
+import { OpponentView } from './OpponentView';
 import { PlayerRow } from './PlayerCard';
 import { KeepSelection } from './StockScreens';
 
@@ -57,13 +64,14 @@ export function NextOpponent({ run }: { run: RunState }) {
   if (run.next?.rematch) {
     return (
       <p className="points-line">
-        次の試合：<span className="boss">再戦</span>　{run.next.opponentName}と、同じ選手・打順・守備配置・継投で再戦します（試合数は進みません）。作戦は変更できます。
+        次の試合：<span className="boss">再戦</span>　{run.next.opponentName}と、同じ選手・打順・守備配置・継投で再戦します（試合数は進みません）。作戦は変更できます。「相手」タブで相手チームを見られます。
       </p>
     );
   }
   return (
     <p className="points-line">
-      次の相手：{boss ? <span className="boss">ボス戦</span> : '通常戦'}（強さ 段階{stage + 1}・平均総合力 {average}前後）
+      次の相手：{boss ? <span className="boss">ボス戦</span> : '通常戦'}（強さ 段階{stage + 1}・平均総合力 {average}前後
+      {run.next ? `、実際は ${averageOverall([...run.next.opponent]).toFixed(0)}` : ''}）。「相手」タブで選手・打順・継投を見られます。
     </p>
   );
 }
@@ -74,10 +82,10 @@ export function RosterList({ run, title = '自チームの選手' }: { run: RunS
       <h2>
         {title}（{run.roster.length}名・平均総合力 {averageOverall(run.roster).toFixed(0)}）
       </h2>
-      <p className="hint">選手をタップすると全能力を表示します。売却は勝利後の補強フェーズでのみできます。</p>
+      <p className="hint">左の印は現在の作戦での守備位置（「遊→投」は途中で守備位置が変わる、「控え」はどの段階にも出場しない）。選手をタップすると全能力を表示します。売却は勝利後の補強フェーズでのみできます。</p>
       <ul className="player-list">
         {run.roster.map((p) => (
-          <PlayerRow key={p.id} p={p} {...(isStockPlayer(run, p.id) ? { badge: 'ストック' } : {})} />
+          <PlayerRow key={p.id} p={p} pos={positionSummary(run.plan, p.id)} {...(isStockPlayer(run, p.id) ? { badge: 'ストック' } : {})} />
         ))}
       </ul>
     </section>
@@ -104,6 +112,9 @@ export function ResultScreen({
   const lifeBlocker = buyLifeBlocker(run);
   const lastGame = cur.gameNumber >= OPPONENT.totalGames;
   const options = resultOptions(run);
+  const finishReason = finishBlocker(run);
+  const sold = cur.reinforce?.sold ?? [];
+  const [showOpponent, setShowOpponent] = useState(false);
   const rematchLabel = cur.outcome === 'loss' ? 'リベンジする' : '再戦する';
 
   return (
@@ -125,7 +136,13 @@ export function ResultScreen({
             再戦の前に作戦を変更できます。
           </p>
         )}
+        {!reinforce && (
+          <button className="btn full-btn" aria-expanded={showOpponent} onClick={() => setShowOpponent((v) => !v)}>
+            {showOpponent ? '相手チームを閉じる' : '相手チームを見る'}
+          </button>
+        )}
       </section>
+      {!reinforce && showOpponent && <OpponentView name={cur.opponentName} players={cur.opponent} plan={cur.opponentPlan} />}
       <StatusTiles run={run} />
 
       {reinforce && (
@@ -133,11 +150,21 @@ export function ResultScreen({
           <section className="card">
             <h2>補強フェーズ</h2>
             <p className="hint">
-              獲得（相手から1人まで・総合力と同じポイント）、売却（総合力と同じポイント・9名未満は不可）、ライフ購入（{LIFE_PRICE}
-              ポイントで+1）を自由に組み合わせられます。
+              獲得（相手から1人まで・総合力と同じポイント）、売却（総合力と同じポイント）、ライフ購入（{LIFE_PRICE}
+              ポイントで+1）を自由に組み合わせられます。売却で一時的に9名未満になってもかまいませんが、9名以上にしないと補強フェーズを終えられません。
+              このフェーズで売却した選手は、同じポイントを支払って取り戻せます。
             </p>
             <button className="btn full-btn" disabled={lifeBlocker !== null} onClick={() => onChange(buyLife(run))}>
-              ライフを購入（{LIFE_PRICE}ポイント）{lifeBlocker ? ` - ${lifeBlocker}` : ''}
+              ライフを購入（{lifeBlocker ?? `${LIFE_PRICE}ポイント`}）
+            </button>
+            <button
+              className="btn full-btn"
+              disabled={!reinforcementChanged(run)}
+              onClick={() => {
+                if (window.confirm('補強フェーズを開始時の状態（選手・ポイント・ライフ）に戻しますか？')) onChange(resetReinforcement(run));
+              }}
+            >
+              やり直し（補強フェーズの開始時に戻す）
             </button>
           </section>
           <section className="card">
@@ -149,14 +176,15 @@ export function ResultScreen({
                 .sort((a, b) => calcOverall(b) - calcOverall(a))
                 .map((p) => {
                   const blocker = acquireBlocker(run, p.id);
+                  const shortfall = blocker?.endsWith('pt不足') ?? false;
                   return (
                     <PlayerRow
                       key={p.id}
                       p={p}
-                      note={blocker && !cur.acquired ? blocker : undefined}
+                      note={blocker && !cur.acquired && !shortfall ? blocker : undefined}
                       actions={
                         <button className="btn btn-primary" disabled={blocker !== null} onClick={() => onChange(acquirePlayer(run, p.id))}>
-                          獲得 {calcOverall(p)}
+                          {shortfall ? blocker : `獲得 ${calcOverall(p)}`}
                         </button>
                       }
                     />
@@ -175,6 +203,7 @@ export function ResultScreen({
                   <PlayerRow
                     key={p.id}
                     p={p}
+                    pos={positionSummary(run.plan, p.id)}
                     {...(isStockPlayer(run, p.id) ? { badge: 'ストック', note: '売却できません' } : {})}
                     actions={
                       <button
@@ -192,12 +221,39 @@ export function ResultScreen({
                 );
               })}
             </ul>
-            {run.roster.length <= 9 && <p className="hint">保有選手が9名のため、売却はできません。</p>}
+            <p className="hint">守備位置の印は前回の作戦のもの（補強フェーズを終えるときに作戦を補正します）。</p>
           </section>
+          {sold.length > 0 && (
+            <section className="card">
+              <h2>売却した選手（取り戻せます）</h2>
+              <ul className="player-list">
+                {sold.map(({ player: p, price }) => {
+                  const blocker = buyBackBlocker(run, p.id);
+                  return (
+                    <PlayerRow
+                      key={p.id}
+                      p={p}
+                      note={blocker && !blocker.endsWith('pt不足') ? blocker : undefined}
+                      actions={
+                        <button className="btn" disabled={blocker !== null} onClick={() => onChange(buyBack(run, p.id))}>
+                          {blocker?.endsWith('pt不足') ? blocker : `取り戻す ${price}`}
+                        </button>
+                      }
+                    />
+                  );
+                })}
+              </ul>
+            </section>
+          )}
         </>
       )}
 
       <div className="start-bar result-actions-bar">
+        {finishReason && (
+          <p className="small warn" role="alert">
+            {finishReason}
+          </p>
+        )}
         {options.gameOver && (
           <button className="btn btn-primary full-btn" onClick={onNext}>
             ゲーム終了へ
@@ -209,7 +265,7 @@ export function ResultScreen({
           </button>
         )}
         {options.next && (
-          <button className="btn btn-primary full-btn" onClick={onNext}>
+          <button className="btn btn-primary full-btn" disabled={finishReason !== null} onClick={onNext}>
             {reinforce && cur.boss
               ? '補強を終えてボス報酬へ'
               : lastGame && reinforce
@@ -233,7 +289,7 @@ export function BossRewardScreen({ run, onApply }: { run: RunState; onApply: (pl
       <section className="card">
         <h2>ボス撃破の特別報酬</h2>
         <p className="hint">
-          強化する選手を1人選んでください（ストックから連れて行った選手は選べません）。各能力が総合力換算で+10（野手8能力・賢さ・コントロール・クイック・スタミナ +10、球速 +3km/h、球種 合計+3）上がります。上限は超えません。
+          強化する選手を1人選んでください（ストックから連れて行った選手は選べません）。野手8能力・賢さ・コントロール・クイック・スタミナが各+3、球速 +1km/h、球種 合計+1（所持している球種からランダム）上がります。上限は超えません。
         </p>
       </section>
       <section className="card">
@@ -244,6 +300,7 @@ export function BossRewardScreen({ run, onApply }: { run: RunState; onApply: (pl
               <PlayerRow
                 key={p.id}
                 p={p}
+                pos={positionSummary(run.plan, p.id)}
                 {...(isStockPlayer(run, p.id) ? { badge: 'ストック', note: '強化の対象に選べません' } : {})}
                 actions={
                   <button className="btn choice" disabled={blocker !== null} aria-pressed={selected === p.id} onClick={() => setSelected(p.id)}>

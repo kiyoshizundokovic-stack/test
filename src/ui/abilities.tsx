@@ -27,10 +27,42 @@ export function FieldingAbilities({ p }: { p: Player }) {
   return (
     <span className="abilities">
       <Ability label="守" value={p.fielder.fielding} />
-      <Ability label="肩" value={p.fielder.arm} />
+      <Ability label="走" value={p.fielder.speed} />
+      <Ability label="送" value={p.fielder.arm} />
       <Ability label="捕" value={p.fielder.catching} />
       <Ability label="賢" value={p.wisdom} />
     </span>
+  );
+}
+
+/**
+ * 選手一覧で略記する9能力（ミート・パワー・走力・守備・送球／球速・制球・スタミナ・変化球）。
+ * それ以外（捕球・選球眼・盗塁・賢さ・クイック）は、選手をタップしたときの詳細表示で確認する
+ */
+export function ListAbilities({ p }: { p: Player }) {
+  const pitchSum = p.pitcher.pitches.reduce((s, x) => s + x.rating, 0);
+  return (
+    <>
+      <span className="abilities">
+        <Ability label="ミ" value={p.fielder.contact} />
+        <Ability label="パ" value={p.fielder.power} />
+        <Ability label="走" value={p.fielder.speed} />
+        <Ability label="守" value={p.fielder.fielding} />
+        <Ability label="送" value={p.fielder.arm} />
+      </span>
+      <span className="abilities">
+        <span>
+          <b>{p.pitcher.velocityKmh}</b>km
+        </span>
+        <Ability label="制" value={p.pitcher.control} />
+        <span>
+          ス<b>{p.pitcher.stamina}</b>球
+        </span>
+        <span>
+          変<b>{pitchSum}</b>
+        </span>
+      </span>
+    </>
   );
 }
 

@@ -50,7 +50,6 @@ export function StrategyEditor({ roster, plan, onChange, stockIds = new Set() }:
           players={players}
           issues={issues}
           stageIndex={safeStage}
-          stockIds={stockIds}
           onSelectStage={setStageIndex}
           onChange={onChange}
         />

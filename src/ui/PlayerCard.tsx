@@ -9,7 +9,7 @@ import {
   rankOf,
   type Player,
 } from '../core';
-import { BattingAbilities, PitchingAbilities } from './abilities';
+import { ListAbilities } from './abilities';
 
 /** 選手の能力をすべて表示する表 */
 export function PlayerDetail({ p }: { p: Player }) {
@@ -51,8 +51,11 @@ export function PlayerRow({
   badge,
   leading,
   extra,
+  pos,
 }: {
   p: Player;
+  /** 作戦での守備位置の略記（例：「遊」「遊→投」「控え」） */
+  pos?: string;
   actions?: ReactNode;
   note?: ReactNode;
   /** 名前の横の目印（「ストック」など） */
@@ -69,11 +72,11 @@ export function PlayerRow({
         {leading}
         <button className="player-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <span className="player-name">
+            {pos && <span className={`pos-badge${pos.startsWith('控え') ? '' : pos.includes('投') ? ' pitcher' : ' fielder'}`}>{pos}</span>}{' '}
             {fullName(p.name)} {badge && <StockBadge label={badge} />}
             <span className="overall">総合 {calcOverall(p)}</span>
           </span>
-          <BattingAbilities p={p} />
-          <PitchingAbilities p={p} />
+          <ListAbilities p={p} />
         </button>
         {actions && <div className="player-actions">{actions}</div>}
       </div>

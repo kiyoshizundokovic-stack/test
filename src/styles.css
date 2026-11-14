@@ -251,3 +251,16 @@ button, select { font: inherit; color: inherit; }
 .th-sort { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; white-space: nowrap; min-height: 28px; }
 .row-pick { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; text-align: left; min-height: 28px; }
 .row-pick:disabled { color: inherit; cursor: inherit; }
+
+/* 守備位置の印（選手一覧） */
+.player-name .pos-badge { min-width: 0; padding: 0 5px; margin-right: 2px; font-weight: 400; }
+.pos-badge.fielder { background: var(--surface-2); color: var(--text); }
+.warn { color: var(--danger); margin: 0 0 6px; }
+
+/* 相手チーム */
+.sub-heading { font-size: 14px; margin: 12px 0 6px; }
+.opponent-lineup, .opponent-stages { margin: 0; padding-left: 0; list-style: none; }
+.opponent-lineup li { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 14px; }
+.opponent-lineup .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.opponent-stages > li { padding: 3px 0; font-size: 14px; }
+.opponent-stages ul { margin: 2px 0 0; padding-left: 1.2em; }

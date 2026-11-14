@@ -369,7 +369,7 @@ export function finishBlocker(state: RunState): string | null {
   if (state.status !== 'result' || state.current?.outcome !== 'win') return null;
   const lack = MIN_ROSTER_SIZE - state.roster.length;
   return lack > 0
-    ? `保有選手が${MIN_ROSTER_SIZE}名未満です（あと${lack}名）。獲得・売却の取り消し・やり直しで${MIN_ROSTER_SIZE}名以上にしてください`
+    ? `保有選手が${MIN_ROSTER_SIZE}名未満です（あと${lack}名）。獲得・取り戻し・やり直しで${MIN_ROSTER_SIZE}名以上にしてください`
     : null;
 }
 

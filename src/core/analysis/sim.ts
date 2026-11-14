@@ -8,6 +8,7 @@ import { simulateGame } from '../game/engine';
 import { buildAutoPlan } from '../game/plan';
 import type { GamePlan, TeamEntry } from '../game/types';
 import { generatePlayers } from '../generate';
+import { fullName } from '../names';
 import { calcOverall } from '../overall';
 import { Rng } from '../rng';
 import { idCounter } from '../run/ids';
@@ -78,6 +79,12 @@ export interface RunOutcome {
   bossWins: number;
   finalAverage: number;
   finalPoints: number;
+  /** 終了時の保有選手（ストックに残す選手を選ぶのに使う） */
+  finalRoster: Player[];
+  /** ストックから連れて行った選手のID */
+  stockIds: string[];
+  /** このプレイで新しく生成・獲得した選手のうち、ボス報酬で強化された回数（選手ID → 回数） */
+  boosted: Record<string, number>;
 }
 
 const avg = (ps: readonly Player[]) => ps.reduce((s, p) => s + calcOverall(p), 0) / ps.length;
@@ -85,7 +92,7 @@ const avg = (ps: readonly Player[]) => ps.reduce((s, p) => s + calcOverall(p), 0
 /** 補強：方針に従ってライフ購入・選手獲得（必要なら最弱を売却）を行う */
 function reinforce(
   policy: ReinforcePolicy,
-  st: { roster: Player[]; points: number; life: number },
+  st: { roster: Player[]; points: number; life: number; stockIds: ReadonlySet<string> },
   opponent: readonly Player[],
   rules: RunRules,
 ): { livesBought: number; acquired: boolean } {
@@ -102,7 +109,10 @@ function reinforce(
   const tryAcquire = (minGain = 1) => {
     const best = [...opponent].sort((a, b) => calcOverall(b) - calcOverall(a))[0]!;
     const cost = calcOverall(best);
-    const worst = [...st.roster].sort((a, b) => calcOverall(a) - calcOverall(b))[0]!;
+    // ストックから連れて行った選手は売却できないので、入れ替えの対象から除く
+    const sellable = st.roster.filter((p) => !st.stockIds.has(p.id));
+    const worst = [...sellable].sort((a, b) => calcOverall(a) - calcOverall(b))[0];
+    if (!worst) return;
     if (calcOverall(best) - calcOverall(worst) < minGain && st.roster.length >= MAX_ROSTER_SIZE) return;
     if (st.roster.length < MAX_ROSTER_SIZE) {
       if (st.points >= cost) {
@@ -134,17 +144,36 @@ function reinforce(
   return { livesBought, acquired };
 }
 
-export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RULES): RunOutcome {
+/**
+ * 1回のプレイをシミュレートする。
+ * @param stockPicks ストックから連れて行く選手（run.ts の createRun と同じく、自動生成の選手の後ろに加える。売却不可・ボス報酬対象外）
+ * @param runId プレイID（選手IDの接頭辞。run.ts と同じ乱数の使い方になるよう、既定は createRun と同じ）
+ */
+export function simulateRun(
+  seed: number,
+  bot: Bot,
+  rules: RunRules = DEFAULT_RULES,
+  stockPicks: readonly Player[] = [],
+  runId = `seed-${seed}`,
+): RunOutcome {
   const rng = new Rng(seed);
-  // run.ts の createRun と同じ選手IDの付け方（乱数の消費をそろえるため）
-  const ids = idCounter(`seed-${seed}`, 0);
+  // run.ts の createRun と同じ選手IDの付け方・名前の重複の避け方（乱数の消費をそろえるため）
+  const ids = idCounter(runId, 0);
+  const generated = generatePlayers(rng, rules.initialRosterSize, {
+    targetOverall: rules.initialTargetOverall,
+    idFactory: ids.factory,
+    ...(stockPicks.length > 0 ? { avoidNames: new Set(stockPicks.map((p) => fullName(p.name))) } : {}),
+  });
+  const stockIds = new Set(stockPicks.map((p) => p.id));
   const st = {
-    roster: generatePlayers(rng, rules.initialRosterSize, { targetOverall: rules.initialTargetOverall, idFactory: ids.factory }),
+    roster: [...generated, ...stockPicks.map((p) => ({ ...p }))],
     points: rules.initialPoints,
     life: rules.initialLife,
+    stockIds,
   };
   const out: RunOutcome = {
-    reached: 0, rematches: 0, finished: false, wins: 0, losses: 0, draws: 0, livesBought: 0, playersAcquired: 0, bossWins: 0, finalAverage: 0, finalPoints: 0,
+    reached: 0, rematches: 0, finished: false, wins: 0, losses: 0, draws: 0, livesBought: 0, playersAcquired: 0, bossWins: 0,
+    finalAverage: 0, finalPoints: 0, finalRoster: [], stockIds: [...stockIds], boosted: {},
   };
   let plan: GamePlan | null = null;
   let planKey = '';
@@ -185,7 +214,9 @@ export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RU
       if (r.acquired) out.playersAcquired++;
       if (boss) {
         out.bossWins++;
-        const target = [...st.roster].sort((a, b) => calcOverall(b) - calcOverall(a))[0]!;
+        // ボス報酬：ストックから連れて行った選手以外で、総合力の最も高い選手
+        const target = st.roster.filter((p) => !stockIds.has(p.id)).sort((a, b) => calcOverall(b) - calcOverall(a))[0]!;
+        out.boosted[target.id] = (out.boosted[target.id] ?? 0) + 1;
         const { player } = applyBossRewardToPlayer(target, rng);
         st.roster = st.roster.map((p) => (p.id === target.id ? player : p));
         st.life += rules.lifeOnBossWin;
@@ -207,6 +238,7 @@ export function simulateRun(seed: number, bot: Bot, rules: RunRules = DEFAULT_RU
   }
   out.finalAverage = avg(st.roster);
   out.finalPoints = st.points;
+  out.finalRoster = st.roster;
   return out;
 }
 

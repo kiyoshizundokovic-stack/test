@@ -8,6 +8,7 @@ import { applyBossReward, createRun, finishResult, playGame, resultOptions, show
 import type { RunState } from '../run/types';
 import { generateOpponentRoster } from '../team';
 import { runMatchup } from './matchups';
+import { simulateCampaign } from './campaign';
 import { DEFAULT_RULES, simulateRun } from './sim';
 import { bestAssignment, fieldingValue, FIELD_POSITIONS, optimizedPlan, randomPlan } from './strategy';
 
@@ -57,6 +58,28 @@ describe('分析用の作戦ボット', () => {
 });
 
 describe('ローグライクのシミュレーター', () => {
+  it('ストックから選手を連れて行くプレイでも run.ts と同じ結果になる（売却不可・ボス報酬対象外を含む）', () => {
+    const picks = generatePlayers(new Rng(99), 3, { targetOverall: 900 });
+    for (const seed of [1, 2, 3]) {
+      let s: RunState = { ...createRun(seed, 'pick-run-01', picks), life: 10 };
+      while (s.status !== 'gameover' && s.status !== 'finished') {
+        if (s.status === 'strategy') s = playGame(s);
+        else if (s.status === 'game') s = showResult(s);
+        else if (s.status === 'result') {
+          const o = resultOptions(s);
+          s = o.gameOver || o.next ? finishResult(s) : startRematch(s);
+        } else if (s.status === 'bossReward') {
+          const target = s.roster.filter((p) => !s.stockPlayerIds.includes(p.id)).sort((a, b) => calcOverall(b) - calcOverall(a))[0]!;
+          s = applyBossReward(s, target.id);
+        }
+      }
+      const sim = simulateRun(seed, { plan: 'ai', reinforce: 'none' }, { ...DEFAULT_RULES, initialLife: 10 }, picks, 'pick-run-01');
+      expect(sim.reached).toBe(s.gameNumber);
+      expect([sim.wins, sim.losses, sim.draws]).toEqual([s.record.wins, s.record.losses, s.record.draws]);
+      expect(sim.finalRoster).toEqual(s.roster);
+    }
+  });
+
   it('既定の規則・補強なしなら run.ts の通しプレイと同じ結果になる（再戦を含む）', () => {
     // ボス戦の再戦も通るよう、ライフを多めにした両者で比べる
     let bossRematches = 0;
@@ -84,5 +107,17 @@ describe('ローグライクのシミュレーター', () => {
       }
     }
     expect(bossRematches).toBeGreaterThan(0);
+  });
+});
+
+describe('繰り返しプレイのシミュレーター', () => {
+  it('ストックを持ち越し、連れて行く選手は総合力の高い順に最大3人。完走したら終わる', () => {
+    const r = simulateCampaign(1, { run: { plan: 'ai', reinforce: 'playerFirst' }, picks: 3 }, DEFAULT_RULES, 6);
+    expect(r.plays.length).toBeGreaterThan(0);
+    expect(r.plays[0]!.pickAverage).toBe(0); // 初回はストックなし
+    for (const p of r.plays.slice(1)) expect(p.pickAverage).toBeGreaterThan(0);
+    if (r.firstCompletion !== null) expect(r.plays).toHaveLength(r.firstCompletion);
+    // 同じシードなら同じ結果
+    expect(simulateCampaign(1, { run: { plan: 'ai', reinforce: 'playerFirst' }, picks: 3 }, DEFAULT_RULES, 6)).toEqual(r);
   });
 });

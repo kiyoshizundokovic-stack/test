@@ -16,7 +16,8 @@
     "verify:steals": "tsx scripts/verify-steals.ts",
     "verify:errors": "tsx scripts/verify-errors.ts",
     "run-sim": "tsx scripts/run-sim.ts",
-    "balance-report": "tsx scripts/balance-report.ts"
+    "balance-report": "tsx scripts/balance-report.ts",
+    "campaign-report": "tsx scripts/campaign-report.ts"
   },
   "dependencies": {
     "react": "^19.3.1",

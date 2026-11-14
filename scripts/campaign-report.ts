@@ -120,7 +120,9 @@ async function main() {
   jobs.forEach((j, i) => {
     if (!/基準|案A\*\*|案B\*\*|案C\*\*/.test(j.label)) return;
     const r = results[i]!;
-    log(`| ${j.label} | ${cps.map((k) => (Number.isNaN(r.pickAverageByPlay[Number(k)]!) ? '-' : r.pickAverageByPlay[Number(k)]!.toFixed(0))).join(' | ')} |`);
+    // ワーカーから JSON で受け取るため、NaN（そのプレイ回数まで続いたキャンペーンがない）は null になっている
+    const cell = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(0) : '-');
+    log(`| ${j.label} | ${cps.map((k) => cell(r.pickAverageByPlay[Number(k)])).join(' | ')} |`);
   });
   log();
   log('（完走したキャンペーンはそこで終わるため、後半のプレイ回数ほど「まだ完走していないキャンペーン」だけの平均になる）');

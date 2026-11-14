@@ -54,10 +54,10 @@ export function StatusTiles({ run }: { run: RunState }) {
 
 export function NextOpponent({ run }: { run: RunState }) {
   const { stage, boss, average } = stageOf(run.gameNumber);
-  if (run.rematch) {
+  if (run.next?.rematch) {
     return (
       <p className="points-line">
-        次の試合：<span className="boss">再戦</span>　{run.rematch.opponentName}と、同じ選手・打順・守備配置・継投で再戦します（試合数は進みません）。作戦は変更できます。
+        次の試合：<span className="boss">再戦</span>　{run.next.opponentName}と、同じ選手・打順・守備配置・継投で再戦します（試合数は進みません）。作戦は変更できます。
       </p>
     );
   }

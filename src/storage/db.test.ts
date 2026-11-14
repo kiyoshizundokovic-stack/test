@@ -43,7 +43,7 @@ describe('IndexedDB への保存', () => {
     delete v1.nextSerial;
     delete v1.stockPlayerIds;
     delete v1.playStats;
-    delete v1.rematch;
+    delete v1.next;
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('play', 'readwrite');
       tx.objectStore('play').put({ kind: 'play', version: 1, savedAt: '', run: v1 }, 'current');
@@ -51,7 +51,7 @@ describe('IndexedDB への保存', () => {
       tx.onerror = () => reject(tx.error);
     });
     const loaded = await storage.loadPlay();
-    expect(loaded?.version).toBe(3);
+    expect(loaded?.version).toBe(4);
     expect(loaded?.runId).toBe('legacy-2');
   });
 

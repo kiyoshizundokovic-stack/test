@@ -160,7 +160,7 @@ export function PlayScreen({ run, setRun, stock, onTitle, onConclude }: Props) {
         <button className="btn btn-primary full-btn" disabled={planErrors.length > 0} onClick={() => update(playGame(run))}>
           {planErrors.length > 0
             ? '作戦に問題があります（「作戦」で修正してください）'
-            : run.rematch
+            : run.next?.rematch
               ? `第${run.gameNumber}戦の再戦を開始`
               : `第${run.gameNumber}戦を開始`}
         </button>

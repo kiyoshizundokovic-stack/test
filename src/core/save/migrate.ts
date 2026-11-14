@@ -3,10 +3,12 @@
  * - 進行中のプレイ：バージョン1（フェーズ6の形式。保存は未実装だったが形式としては存在した）→ 2 → 3
  *   2：プレイID・選手の通し番号・ストックから連れて行った選手・再戦の情報
  *   3：このプレイでの選手ごとの成績（playStats）
- * - ストック：バージョン2から（3で形式の変更なし）。通算成績に項目が増えたときは、欠けている項目を0で補う
+ *   4：次の試合の相手（next。再戦の情報 rematch を統合）・補強フェーズの状態（current.reinforce）
+ * - ストック：バージョン2から（3・4で形式の変更なし）。通算成績に項目が増えたときは、欠けている項目を0で補う
  */
 import { buildAutoPlan } from '../game/plan';
 import type { GamePlan } from '../game/types';
+import { prepareNextOpponent } from '../run/run';
 import type { CurrentGame, GameSummary, RunState } from '../run/types';
 import { BATTING_STAT_KEYS, emptyCareer, PITCHING_STAT_KEYS, type CareerStats, type StockData, type StockEntry } from '../stock/types';
 import { FIELDER_ABILITY_KEYS, type Player } from '../types';
@@ -80,10 +82,28 @@ export function migrateRunV2toV3(v2: Obj): Obj {
   return { ...v2, version: 3, playStats: {} };
 }
 
-/** RunState（バージョン3）の検証 */
+/**
+ * バージョン3の RunState をバージョン4に変換する。
+ * - 再戦の情報（rematch）は next（rematch: true）に移す
+ * - 試合前（作戦の状態）で再戦でなければ、次の相手をここで生成する（乱数の順序は従来と同じ：試合開始時に生成していたものを先に生成するだけ）
+ * - 勝利後の補強フェーズ中なら、読み込んだ時点の状態を「やり直し」の基準にする（それ以前の売却は取り消せない）
+ */
+export function migrateRunV3toV4(v3: Obj): Obj {
+  const { rematch, ...rest } = v3;
+  const next = isObj(rematch) ? { ...rematch, rematch: true } : null;
+  let current = rest.current;
+  if (isObj(current)) {
+    const win = current.outcome === 'win' && rest.status === 'result';
+    current = { ...current, reinforce: win ? { start: { roster: rest.roster, points: rest.points, life: rest.life }, sold: [] } : null };
+  }
+  const v4 = { ...rest, version: 4, current, next } as unknown as RunState;
+  return (v4.status === 'strategy' ? prepareNextOpponent(v4) : v4) as unknown as Obj;
+}
+
+/** RunState（バージョン4）の検証 */
 export function validateRun(v: unknown): RunState {
   if (!isObj(v)) return fail('進行中のプレイの形式が正しくありません');
-  if (v.version !== 3) fail(`進行中のプレイのバージョンが対応していません（${String(v.version)}）`);
+  if (v.version !== 4) fail(`進行中のプレイのバージョンが対応していません（${String(v.version)}）`);
   if (!isObj(v.playStats)) fail('run.playStats がありません');
   str(v.runId, 'run.runId');
   num(v.nextSerial, 'run.nextSerial');
@@ -101,15 +121,17 @@ export function validateRun(v: unknown): RunState {
   if (!isObj(v.record)) fail('run.record がありません');
   arr(v.history, 'run.history');
   if (['game', 'result', 'bossReward'].includes(v.status as string) && !isObj(v.current)) fail('試合中・試合後の状態なのに run.current がありません');
+  if (v.status === 'strategy' && !isObj(v.next)) fail('試合前の状態なのに run.next（次の相手）がありません');
   return v as unknown as RunState;
 }
 
-/** バージョンに応じて RunState を最新に変換する（1 → 2 → 3 の順に変換） */
+/** バージョンに応じて RunState を最新に変換する（1 → 2 → 3 → 4 の順に変換） */
 export function migrateRun(v: unknown): RunState {
   if (!isObj(v)) return fail('進行中のプレイの形式が正しくありません');
   let cur: Obj = v;
   if (cur.version === 1) cur = migrateRunV1toV2(cur) as unknown as Obj;
   if (cur.version === 2) cur = migrateRunV2toV3(cur);
+  if (cur.version === 3) cur = migrateRunV3toV4(cur);
   return validateRun(cur);
 }
 

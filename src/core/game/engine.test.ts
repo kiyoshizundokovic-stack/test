@@ -3,6 +3,7 @@ import { GAME_INNINGS } from '../config';
 import { Rng } from '../rng';
 import { generateOpponentRoster } from '../team';
 import { simulateGame } from './engine';
+import { fatigueMultiplier } from './plate';
 import { buildAutoPlan, validatePlan } from './plan';
 import { computeBoxScore } from './stats';
 import type { GameResult, PlateAppearance, StealAttempt, TeamEntry } from './types';
@@ -181,5 +182,17 @@ describe('試合エンジン', () => {
     const broken: TeamEntry = { ...a, plan: { stages: [{ ...a.plan.stages[0]!, lineup: a.plan.stages[0]!.lineup.slice(0, 8) }] } };
     expect(() => simulateGame(broken, b, 1)).toThrow();
     expect(validatePlan(a.plan, a.players)).toEqual([]);
+  });
+});
+
+describe('球数上限超過後の能力低下（SPEC 4.2）', () => {
+  it('超過10球までは小さく、それ以降は加速度的に低下し、下限で止まる', () => {
+    const table = [0, 5, 10, 15, 20, 25, 30, 35, 60].map((o) => Math.round(fatigueMultiplier(o) * 1000) / 10);
+    expect(table).toEqual([100, 97.5, 95, 92, 83, 68, 47, 30, 30]);
+    expect(fatigueMultiplier(-5)).toBe(1);
+    // 単調に減少し、低下幅は増えていく（下限まで）
+    for (let o = 11; o < 32; o++) {
+      expect(fatigueMultiplier(o) - fatigueMultiplier(o + 1)).toBeGreaterThan(fatigueMultiplier(o - 1) - fatigueMultiplier(o) - 1e-12);
+    }
   });
 });

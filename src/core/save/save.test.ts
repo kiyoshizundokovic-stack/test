@@ -26,10 +26,11 @@ function toV1(run: RunState): Record<string, unknown> {
   delete v1.nextSerial;
   delete v1.stockPlayerIds;
   delete v1.playStats;
-  delete v1.rematch;
+  delete v1.next;
   for (const h of v1.history) delete h.rematch;
   if (v1.current) {
     delete v1.current.rematch;
+    delete v1.current.reinforce;
     delete v1.current.opponentName;
     delete v1.current.opponentPlan;
   }
@@ -75,10 +76,11 @@ describe('進行中のプレイの保存', () => {
   it('バージョン1（フェーズ6の形式）からマイグレーションでき、そのまま続きを遊べる', () => {
     for (const s of [createRun(2), playedRun(2)]) {
       const migrated = migrateRun(toV1(s));
-      expect(migrated.version).toBe(3);
+      expect(migrated.version).toBe(4);
       expect(migrated.playStats).toEqual({});
       expect(migrated.runId).toBe(`legacy-${s.seed}`);
-      expect(migrated.rematch).toBeNull();
+      // 試合前なら次の相手が用意される
+      expect(migrated.next === null).toBe(migrated.status !== 'strategy');
       expect(migrated.stockPlayerIds).toEqual([]);
       expect(migrated.roster).toEqual(s.roster);
       expect(validatePlan(migrated.plan, migrated.roster)).toEqual([]);
@@ -100,7 +102,7 @@ describe('進行中のプレイの保存', () => {
   it('kind のないバージョン1のエクスポート（RunState そのまま）も読み込める', () => {
     const save = readPlaySave(toV1(createRun(4)));
     expect(save.version).toBe(SAVE_VERSION);
-    expect(save.run.version).toBe(3);
+    expect(save.run.version).toBe(4);
   });
 
   it('バージョン2（フェーズ7aの形式）からもマイグレーションできる（このプレイでの成績は空から）', () => {
@@ -108,9 +110,42 @@ describe('進行中のプレイの保存', () => {
     v2.version = 2;
     delete v2.playStats;
     const save = readPlaySave({ kind: 'play', version: 2, savedAt: '', run: v2 });
-    expect(save.run.version).toBe(3);
+    expect(save.run.version).toBe(4);
     expect(save.run.playStats).toEqual({});
     expect(save.run.roster).toEqual(playedRun(2).roster);
+  });
+
+  it('バージョン3（仕様変更3の形式）からマイグレーションできる（再戦の情報は next へ。試合前なら次の相手を生成、勝利後なら読み込み時点がやり直しの基準）', () => {
+    const toV3 = (run: RunState) => {
+      const v3 = JSON.parse(JSON.stringify(run)) as Record<string, any>;
+      v3.version = 3;
+      v3.rematch = run.next?.rematch ? { ...run.next, rematch: undefined } : null;
+      delete v3.next;
+      if (v3.current) delete v3.current.reinforce;
+      return v3;
+    };
+    // 試合前（再戦でない）：次の相手が生成される
+    const fresh = createRun(7);
+    const a = readPlaySave({ kind: 'play', version: 3, savedAt: '', run: toV3({ ...fresh, rngState: 123 }) }).run;
+    expect(a.version).toBe(4);
+    expect(a.next!.rematch).toBe(false);
+    expect(a.next!.opponent).toHaveLength(12);
+    // 試合後：勝利なら補強フェーズの基準を作る
+    for (let g = 1; g <= 4; g++) {
+      const played = playedRun(g);
+      const b = readPlaySave({ kind: 'play', version: 3, savedAt: '', run: toV3(played) }).run;
+      expect(b.next).toBeNull();
+      if (played.current?.outcome === 'win' && played.status === 'result') {
+        expect(b.current!.reinforce!.start).toEqual({ roster: played.roster, points: played.points, life: played.life });
+      } else if (b.current) expect(b.current.reinforce).toBeNull();
+    }
+    // 再戦の待ち：next.rematch が true になり、相手はそのまま
+    let lost = playedRun(1);
+    for (let seed = 0; lost.current?.outcome === 'win'; seed++) lost = showResult(playGame({ ...createRun(seed + 50), next: null }));
+    const rem = startRematch(lost);
+    const c = readPlaySave({ kind: 'play', version: 3, savedAt: '', run: toV3(rem) }).run;
+    expect(c.next!.rematch).toBe(true);
+    expect(c.next!.opponent).toEqual(rem.next!.opponent);
   });
 
   it('不正なデータはわかりやすいエラーにする', () => {

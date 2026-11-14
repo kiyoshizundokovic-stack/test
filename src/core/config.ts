@@ -216,8 +216,13 @@ export const PITCHES_PER_PA = {
   eye: 1.2,
 } as const;
 
-/** 球数上限超過後の能力低下（最後の投手が続投する場合）。1球ごとの低下率と下限倍率 */
-export const FATIGUE = { perPitchOver: 0.01, minMultiplier: 0.4 } as const;
+/**
+ * 球数上限超過後の能力低下（最後の投手が続投する場合。SPEC 4.2）。
+ * 能力の倍率 = max(下限, 1 − perPitchOver×min(超過, knee) − quadratic×max(0, 超過 − knee)²)
+ * 超過10球までは小さく（1球0.5%）、それ以降は加速度的に低下する。
+ * 超過 0/5/10/15/20/25/30/35球 → 100/97.5/95/92/83/68/47/30(下限)%
+ */
+export const FATIGUE = { knee: 10, perPitchOver: 0.005, quadratic: 0.0012, minMultiplier: 0.3 };
 
 /** 打球ゾーンの出現重み（本塁打は別抽選）。ゴロの外野ゾーンは「内野を抜けた打球」で必ず安打 */
 export const ZONE_WEIGHTS = {
@@ -314,11 +319,11 @@ export const OPPONENT = {
 /** ボス戦勝利時の特別報酬（総合力換算で+10を基準。端数切り捨て。上限は超えない） */
 export const BOSS_REWARD = {
   /** 野手8能力・賢さ・コントロール・クイック・スタミナ（球数） */
-  perAbility: 10,
-  /** 球速（km/h）= 10 ÷ 3 の切り捨て */
-  velocityKmh: 3,
-  /** 球種合計 = 10 ÷ 3 の切り捨て（所持球種からランダムに1ずつ） */
-  pitchPoints: 3,
+  perAbility: 3,
+  /** 球速（km/h）= 3 ÷ 3 の切り捨て */
+  velocityKmh: 1,
+  /** 球種合計 = 3 ÷ 3 の切り捨て（所持球種からランダムに1ずつ） */
+  pitchPoints: 1,
 } as const;
 
 /**

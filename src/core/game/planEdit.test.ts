@@ -10,6 +10,7 @@ import {
   entrantsOf,
   moveBattingSlot,
   playersOnField,
+  positionSummary,
   removeStage,
   setEntrantSlot,
   setStealPolicy,
@@ -139,5 +140,21 @@ describe('作戦の編集', () => {
     addStage(base, players);
     removeStage(base, 2);
     expect(JSON.stringify(base)).toBe(snapshot);
+  });
+
+  it('作戦での守備位置の略記：先発時の守備位置、途中の変化、途中出場は「控え→」、出場しない選手は「控え」', () => {
+    const s0 = base.stages[0]!;
+    expect(positionSummary(base, s0.positions.SS)).toBe('遊');
+    expect(positionSummary(base, s0.positions.P)).toBe('投'); // 途中で退く先発投手は先発時の守備位置だけ
+    expect(positionSummary(base, base.stages[1]!.positions.P)).toBe('控え→投');
+    const bench = players.find((p) => !base.stages.some((st) => playersOnField(st).includes(p.id)));
+    if (bench) expect(positionSummary(base, bench.id)).toBe('控え');
+    // 最後の段階で遊撃手を投手に回す → 遊撃手は「遊→投」、その段階の継投投手は「控え→遊」
+    const last = base.stages.length - 1;
+    const ss = s0.positions.SS;
+    const reliever = base.stages[last]!.positions.P;
+    const plan = assignPosition(base, last, 'P', ss);
+    expect(positionSummary(plan, ss)).toBe('遊→投');
+    expect(positionSummary(plan, reliever)).toBe('控え→遊');
   });
 });

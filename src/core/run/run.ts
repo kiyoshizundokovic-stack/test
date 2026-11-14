@@ -80,8 +80,8 @@ export function createRun(seed: number, runId: string = `seed-${seed}`, stockPla
     ...(stockPlayers.length > 0 ? { avoidNames: new Set(stockPlayers.map((p) => fullName(p.name))) } : {}),
   });
   const roster = [...generated, ...stockPlayers.map((p) => ({ ...p }))];
-  return {
-    version: 3,
+  const base: RunState = {
+    version: 4,
     runId,
     nextSerial: ids.next(),
     stockPlayerIds: stockPlayers.map((p) => p.id),
@@ -98,11 +98,38 @@ export function createRun(seed: number, runId: string = `seed-${seed}`, stockPla
     record: { wins: 0, losses: 0, draws: 0 },
     history: [],
     current: null,
-    rematch: null,
+    next: null,
   };
+  // 第1戦の相手を用意する（試合前に相手の情報を見られるように）
+  return prepareNextOpponent(base);
 }
 
 export class RunError extends Error {}
+
+/**
+ * 次の試合の相手を生成して state.next に入れる（すでに用意されていれば何もしない）。
+ * 乱数は従来どおり「相手の生成 → 先攻後攻 → 試合」の順で使うので、試合の前に生成しても結果は変わらない。
+ */
+export function prepareNextOpponent(state: RunState): RunState {
+  if (state.next) return state;
+  const { boss, average } = stageOf(state.gameNumber);
+  const ids = idCounter(state.runId, state.nextSerial);
+  const { value: opponent, rngState } = withRng(state, (rng) => generateOpponentRoster(rng, average, undefined, ids.factory));
+  return {
+    ...state,
+    rngState,
+    nextSerial: ids.next(),
+    next: {
+      gameNumber: state.gameNumber,
+      boss,
+      rematch: false,
+      targetAverage: average,
+      opponentName: `${boss ? 'ボス' : '相手'}（第${state.gameNumber}戦）`,
+      opponent,
+      opponentPlan: buildAutoPlan(opponent),
+    },
+  };
+}
 
 function assertStatus(state: RunState, ...allowed: RunState['status'][]) {
   if (!allowed.includes(state.status)) throw new RunError(`この操作は現在の状態（${state.status}）ではできません`);
@@ -123,14 +150,12 @@ export function playGame(state: RunState): RunState {
   const errors = validatePlan(state.plan, state.roster);
   if (errors.length > 0) throw new RunError(`作戦に問題があります：${errors.join(' / ')}`);
 
-  // 再戦なら保存しておいた相手（選手・作戦）をそのまま使い、そうでなければ強さの段階に応じて生成する
-  const setup = state.rematch;
-  const { boss, average } = setup ? { boss: setup.boss, average: setup.targetAverage } : stageOf(state.gameNumber);
-  const ids = idCounter(state.runId, state.nextSerial);
-  const { value, rngState } = withRng(state, (rng) => {
-    const opponent = setup ? setup.opponent : generateOpponentRoster(rng, average, undefined, ids.factory);
-    const opponentPlan = setup ? setup.opponentPlan : buildAutoPlan(opponent);
-    const opponentName = setup ? setup.opponentName : `${boss ? 'ボス' : '相手'}（第${state.gameNumber}戦）`;
+  // 相手は試合前に用意してある（再戦なら直前の相手そのもの）
+  const prepared = prepareNextOpponent(state);
+  const setup = prepared.next!;
+  const { boss, targetAverage: average } = setup;
+  const { value, rngState } = withRng(prepared, (rng) => {
+    const { opponent, opponentPlan, opponentName } = setup;
     const mine: TeamEntry = { name: MY_TEAM_NAME, players: state.roster, plan: state.plan };
     const opp: TeamEntry = { name: opponentName, players: opponent, plan: opponentPlan };
     const side: 'away' | 'home' = rng.next() < 0.5 ? 'away' : 'home';
@@ -143,10 +168,11 @@ export function playGame(state: RunState): RunState {
   const other = side === 'away' ? 'home' : 'away';
   const outcome: Outcome = game.winner === 'draw' ? 'draw' : game.winner === side ? 'win' : 'loss';
   const pointsGained = outcome === 'win' ? winPoints(opponent) : 0;
+  const points = state.points + pointsGained;
   const current: CurrentGame = {
     gameNumber: state.gameNumber,
     boss,
-    rematch: setup !== null,
+    rematch: setup.rematch,
     opponentName,
     opponentPlan,
     targetAverage: average,
@@ -157,11 +183,13 @@ export function playGame(state: RunState): RunState {
     outcome,
     pointsGained,
     acquired: false,
+    // 補強フェーズ（勝利時のみ）：開始時の状態を残し、売却の取り消し・やり直しに使う
+    reinforce: outcome === 'win' ? { start: { roster: state.roster, points, life: state.life }, sold: [] } : null,
   };
   const summary: GameSummary = {
     gameNumber: state.gameNumber,
     boss,
-    rematch: setup !== null,
+    rematch: setup.rematch,
     opponentAverage: current.opponentAverage,
     side,
     score: { mine: game.score[side], opponent: game.score[other] },
@@ -169,11 +197,10 @@ export function playGame(state: RunState): RunState {
     pointsGained,
   };
   return {
-    ...state,
+    ...prepared,
     rngState,
-    nextSerial: ids.next(),
     status: 'game',
-    points: state.points + pointsGained,
+    points,
     life: outcome === 'loss' ? state.life - 1 : state.life,
     record: {
       wins: state.record.wins + (outcome === 'win' ? 1 : 0),
@@ -183,7 +210,7 @@ export function playGame(state: RunState): RunState {
     history: [...state.history, summary],
     current,
     playStats: mergeStatsTable(state.playStats, collectGameStats(game, side)),
-    rematch: null,
+    next: null,
     planNotes: [],
   };
 }
@@ -208,8 +235,13 @@ export function acquireBlocker(state: RunState, playerId: string): string | null
   if (!p) return '相手チームにいない選手です';
   if (state.roster.length >= MAX_ROSTER_SIZE) return `所持枠（${MAX_ROSTER_SIZE}名）が埋まっています。先に売却してください`;
   const cost = calcOverall(p);
-  if (state.points < cost) return `ポイントが足りません（必要 ${cost}）`;
+  if (state.points < cost) return shortfallText(cost - state.points);
   return null;
+}
+
+/** ポイントが足りないときの表示（「あと◯pt不足」） */
+export function shortfallText(shortfall: number): string {
+  return `あと${shortfall}pt不足`;
 }
 
 /** 相手選手を獲得する（総合力と同じポイントを支払い、ロースターに追加） */
@@ -234,21 +266,83 @@ export function sellBlocker(state: RunState, playerId: string): string | null {
   if (!canReinforce(state)) return '売却は勝利後の補強フェーズでのみできます';
   if (!state.roster.some((p) => p.id === playerId)) return '所持していない選手です';
   if (isStockPlayer(state, playerId)) return 'ストックから連れて行った選手は売却できません';
-  if (state.roster.length <= MIN_ROSTER_SIZE) return `保有選手が${MIN_ROSTER_SIZE}名未満になるため売却できません`;
+  // 一時的に9名未満になってもよい（9名未満の間は補強フェーズを終えられない：finishBlocker）
   return null;
 }
 
-/** 選手を売却する（総合力と同じポイントを得る） */
+/** 選手を売却する（総合力と同じポイントを得る）。売却した選手は同じフェーズ内なら取り戻せる */
 export function sellPlayer(state: RunState, playerId: string): RunState {
   const blocker = sellBlocker(state, playerId);
   if (blocker) throw new RunError(blocker);
+  const cur = state.current!;
   const p = state.roster.find((x) => x.id === playerId)!;
-  return { ...state, points: state.points + calcOverall(p), roster: state.roster.filter((x) => x.id !== playerId) };
+  const price = calcOverall(p);
+  const reinforce = cur.reinforce ?? { start: { roster: state.roster, points: state.points, life: state.life }, sold: [] };
+  return {
+    ...state,
+    points: state.points + price,
+    roster: state.roster.filter((x) => x.id !== playerId),
+    current: { ...cur, reinforce: { ...reinforce, sold: [...reinforce.sold, { player: p, price }] } },
+  };
+}
+
+/** 売却を取り消せない理由（取り消せるなら null） */
+export function buyBackBlocker(state: RunState, playerId: string): string | null {
+  if (!canReinforce(state)) return '補強フェーズではありません';
+  const sold = state.current!.reinforce?.sold.find((s) => s.player.id === playerId);
+  if (!sold) return 'このフェーズで売却した選手ではありません';
+  if (state.roster.length >= MAX_ROSTER_SIZE) return `所持枠（${MAX_ROSTER_SIZE}名）が埋まっています`;
+  if (state.points < sold.price) return shortfallText(sold.price - state.points);
+  return null;
+}
+
+/** 売却を取り消す（売却額と同じポイントを支払って取り戻す。獲得の「1人まで」には数えない） */
+export function buyBack(state: RunState, playerId: string): RunState {
+  const blocker = buyBackBlocker(state, playerId);
+  if (blocker) throw new RunError(blocker);
+  const cur = state.current!;
+  const reinforce = cur.reinforce!;
+  const sold = reinforce.sold.find((s) => s.player.id === playerId)!;
+  return {
+    ...state,
+    points: state.points - sold.price,
+    roster: [...state.roster, sold.player],
+    current: { ...cur, reinforce: { ...reinforce, sold: reinforce.sold.filter((s) => s.player.id !== playerId) } },
+  };
+}
+
+/** 補強フェーズを開始時の状態（選手・ポイント・ライフ・獲得の有無）に戻す */
+export function resetReinforcement(state: RunState): RunState {
+  if (!canReinforce(state)) throw new RunError('補強フェーズではありません');
+  const cur = state.current!;
+  const start = cur.reinforce?.start;
+  if (!start) return state;
+  return {
+    ...state,
+    roster: start.roster,
+    points: start.points,
+    life: start.life,
+    current: { ...cur, acquired: false, reinforce: { start, sold: [] } },
+  };
+}
+
+/** 補強フェーズを始めたときから変わっているか（「やり直し」を押せるか） */
+export function reinforcementChanged(state: RunState): boolean {
+  const cur = state.current;
+  const start = cur?.reinforce?.start;
+  if (!cur || !start) return false;
+  return (
+    cur.acquired ||
+    state.points !== start.points ||
+    state.life !== start.life ||
+    state.roster.length !== start.roster.length ||
+    state.roster.some((p, i) => p.id !== start.roster[i]?.id)
+  );
 }
 
 export function buyLifeBlocker(state: RunState): string | null {
   if (!canReinforce(state)) return 'ライフの購入は勝利後の補強フェーズでのみできます';
-  if (state.points < LIFE_PRICE) return `ポイントが足りません（必要 ${LIFE_PRICE}）`;
+  if (state.points < LIFE_PRICE) return shortfallText(LIFE_PRICE - state.points);
   return null;
 }
 
@@ -266,7 +360,17 @@ function proceed(state: RunState): RunState {
   const names = new Map(state.roster.map((p) => [p.id, fullName(p.name)]));
   const allNames = new Map([...(state.current?.game.away.players ?? []), ...(state.current?.game.home.players ?? [])].map((p) => [p.id, fullName(p.name)]));
   const { plan, notes } = reconcilePlan(state.plan, state.roster, (id) => names.get(id) ?? allNames.get(id) ?? id);
-  return { ...state, status: 'strategy', gameNumber: state.gameNumber + 1, plan, planNotes: notes, current: null };
+  // 次の試合の相手を用意する（試合前の画面で相手の情報を見られるように）
+  return prepareNextOpponent({ ...state, status: 'strategy', gameNumber: state.gameNumber + 1, plan, planNotes: notes, current: null, next: null });
+}
+
+/** 補強フェーズを終えられない理由（終えられるなら null）。保有選手が9名未満の間は終えられない */
+export function finishBlocker(state: RunState): string | null {
+  if (state.status !== 'result' || state.current?.outcome !== 'win') return null;
+  const lack = MIN_ROSTER_SIZE - state.roster.length;
+  return lack > 0
+    ? `保有選手が${MIN_ROSTER_SIZE}名未満です（あと${lack}名）。獲得・売却の取り消し・やり直しで${MIN_ROSTER_SIZE}名以上にしてください`
+    : null;
 }
 
 /** 試合結果のあとに選べる操作（SPEC 5.6） */
@@ -298,6 +402,8 @@ export function finishResult(state: RunState): RunState {
   const options = resultOptions(state);
   if (options.gameOver) return { ...state, status: 'gameover' };
   if (!options.next) throw new RunError('ボス戦は勝たないと次に進めません（再戦してください）');
+  const blocker = finishBlocker(state);
+  if (blocker) throw new RunError(blocker);
   if (cur.outcome === 'win' && cur.boss) return { ...state, status: 'bossReward' };
   return proceed(state);
 }
@@ -315,9 +421,10 @@ export function startRematch(state: RunState): RunState {
     status: 'strategy',
     current: null,
     planNotes: [],
-    rematch: {
+    next: {
       gameNumber: cur.gameNumber,
       boss: cur.boss,
+      rematch: true,
       targetAverage: cur.targetAverage,
       opponentName: cur.opponentName,
       opponent: cur.opponent,

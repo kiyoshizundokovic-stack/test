@@ -8,6 +8,11 @@ export const POSITION_LABELS: Record<Position, string> = {
   P: '投手', C: '捕手', '1B': '一塁', '2B': '二塁', '3B': '三塁', SS: '遊撃', LF: '左翼', CF: '中堅', RF: '右翼',
 };
 
+/** 守備位置の略記（1文字） */
+export const POSITION_SHORT: Record<Position, string> = {
+  P: '投', C: '捕', '1B': '一', '2B': '二', '3B': '三', SS: '遊', LF: '左', CF: '中', RF: '右',
+};
+
 export const OUTFIELD: readonly Position[] = ['LF', 'CF', 'RF'];
 export const isOutfield = (p: Position) => OUTFIELD.includes(p);
 

@@ -32,9 +32,16 @@ export interface PitcherForm {
   stuff: number;
 }
 
+/** 球数上限を超えた球数に応じた能力の倍率（SPEC 4.2：超過が増えるほど加速度的に低下） */
+export function fatigueMultiplier(over: number): number {
+  if (over <= 0) return 1;
+  const linear = FATIGUE.perPitchOver * Math.min(over, FATIGUE.knee);
+  const accel = FATIGUE.quadratic * Math.max(0, over - FATIGUE.knee) ** 2;
+  return Math.max(FATIGUE.minMultiplier, 1 - linear - accel);
+}
+
 export function pitcherForm(p: Player, pitchesThrown: number): PitcherForm {
-  const over = Math.max(0, pitchesThrown - p.pitcher.stamina);
-  const m = Math.max(FATIGUE.minMultiplier, 1 - FATIGUE.perPitchOver * over);
+  const m = fatigueMultiplier(pitchesThrown - p.pitcher.stamina);
   return {
     vel: ((p.pitcher.velocityKmh - VELOCITY_BASE_KMH) / (VELOCITY_MAX_KMH - VELOCITY_BASE_KMH)) * m,
     control: (p.pitcher.control / CONTROL_MAX) * m,

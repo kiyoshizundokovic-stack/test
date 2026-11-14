@@ -10,7 +10,7 @@
  */
 import type { Player } from '../types';
 import { buildAutoPlan, pitchingScore, validatePlanDetailed } from './plan';
-import { POSITIONS, type GamePlan, type Position, type Stage, type StealPolicy } from './types';
+import { POSITION_SHORT, POSITIONS, type GamePlan, type Position, type Stage, type StealPolicy } from './types';
 
 const clonePlan = (plan: GamePlan): GamePlan => ({
   stages: plan.stages.map((s) => ({ lineup: [...s.lineup], positions: { ...s.positions } })),
@@ -35,6 +35,27 @@ export function playersOnField(stage: Stage): string[] {
 
 export function positionOf(stage: Stage, playerId: string): Position | undefined {
   return POSITIONS.find((pos) => stage.positions[pos] === playerId);
+}
+
+/**
+ * 作戦での選手の守備位置の略記（自チームの選手一覧に表示する）。
+ * - 先発時（第1段階）の守備位置。例：「遊」
+ * - 途中の段階で守備位置が変わる場合は変化も表示。例：「遊→投」（同じ守備位置が続く段階はまとめる）
+ * - 途中から出場する選手は「控え→投」、どの段階にも出場しない選手は「控え」
+ * - 途中で退く選手は、出場している間の守備位置だけを表示する
+ */
+export function positionSummary(plan: GamePlan, playerId: string): string {
+  const seq = plan.stages.map((s) => positionOf(s, playerId));
+  const first = seq.findIndex((p) => p !== undefined);
+  if (first < 0) return '控え';
+  const parts: string[] = first > 0 ? ['控え'] : [];
+  let last: Position | undefined;
+  for (const pos of seq.slice(first)) {
+    if (pos === undefined || pos === last) continue;
+    parts.push(POSITION_SHORT[pos]);
+    last = pos;
+  }
+  return parts.join('→');
 }
 
 /**

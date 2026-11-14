@@ -37,6 +37,8 @@ export function App() {
   useEffect(() => {
     void (async () => {
       const opened = await openStorage();
+      // 端末の空き容量が少ないときにブラウザがデータを消さないよう、永続化を求める（対応ブラウザのみ）
+      void navigator.storage?.persist?.().catch(() => false);
       try {
         setSavedRun(await opened.storage.loadPlay());
       } catch (e) {

@@ -22,7 +22,8 @@
 ## コマンド
 - `npm test` … Vitest（`src/**/*.test.ts`）
 - `npm run typecheck` … 型チェック
-- `npm run dev` / `npm run build` … 開発サーバー / ビルド
+- `npm run dev` / `npm run build` … 開発サーバー / ビルド（PWA のサービスワーカー・マニフェストも生成）
+- `python3 scripts/generate-icons.py` … アプリのアイコン（public/icons/）を生成
 - `npm run players -- [seed] [人数]` … 選手を生成して能力表をコンソール出力
 - `npm run game -- [seed] [平均総合力]` … 2チームで1試合を実行し、ログ・スコアボード・成績を出力
 - `npm run balance -- [試合数] [seed] [平均総合力]` … バランス検証（目標値との比較）。config の係数を変えたら必ず実行する
@@ -41,6 +42,8 @@
 - `src/core/game/` … 試合エンジン（types, plan＝作戦AI・検証, plate＝打席抽選, runnerTable＝走者処理表, runners, engine, stats, format, balance＝バランス検証の集計, planEdit＝作戦の編集操作, fielding＝エラー判定, steal＝盗塁, replay＝試合画面の再生）
 - `scripts/` … Node で実行する確認用スクリプト（tsx）
 - `docs/` … 検証レポート（balance-report.md、campaign-report.md）
+- `public/icons/` … アプリのアイコン（PWA・ホーム画面用）
+- `.github/workflows/deploy.yml` … テスト・型チェック・ビルドと GitHub Pages への公開（main への push 時）
 - `src/App.tsx`, `src/main.tsx`, `src/styles.css` … React UI のエントリ（セーブデータの読み込み・自動保存）
 - `src/storage/` … IndexedDB への保存（UI 層。core からは使わない）
 - `src/ui/` … 画面コンポーネント（TitleScreen＝タイトル・データの入出力、PlayScreen＝進行中のプレイ、StockScreens＝ストック一覧・ニューゲームの選手選び・終了時の選択、StrategyEditor＝作戦設定、GameScreen＝試合画面、RunScreens＝ホーム・結果と補強・ボス報酬・終了、PlayerCard＝選手表示 など）

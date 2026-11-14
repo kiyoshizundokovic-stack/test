@@ -17,7 +17,7 @@ interface Props {
 function describeRun(run: RunState): string {
   const { wins, losses, draws } = run.record;
   const state =
-    run.status === 'gameover' ? 'ゲームオーバー' : run.status === 'finished' ? '100戦完走' : `第${run.gameNumber}戦${run.rematch ? '（再戦）' : ''}・ライフ${run.life}`;
+    run.status === 'gameover' ? 'ゲームオーバー' : run.status === 'finished' ? '100戦完走' : `第${run.gameNumber}戦${run.next?.rematch ? '（再戦）' : ''}・ライフ${run.life}`;
   return `${state}／${wins}勝${losses}敗${draws}分／ポイント${run.points}`;
 }
 

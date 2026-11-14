@@ -11,10 +11,11 @@ import {
   type StockData,
 } from '../core';
 import { GameScreen } from './GameScreen';
+import { OpponentView } from './OpponentView';
 import { BossRewardScreen, EndScreen, NextOpponent, ResultScreen, RosterList, StatusTiles } from './RunScreens';
 import { StrategyEditor } from './StrategyEditor';
 
-type HomeTab = 'home' | 'roster' | 'strategy';
+type HomeTab = 'home' | 'roster' | 'opponent' | 'strategy';
 
 interface Props {
   run: RunState;
@@ -114,6 +115,7 @@ export function PlayScreen({ run, setRun, stock, onTitle, onConclude }: Props) {
           [
             ['home', 'ホーム'],
             ['roster', '選手'],
+            ['opponent', '相手'],
             ['strategy', '作戦'],
           ] as const
         ).map(([key, label]) => (
@@ -154,13 +156,14 @@ export function PlayScreen({ run, setRun, stock, onTitle, onConclude }: Props) {
         </>
       )}
       {tab === 'roster' && <RosterList run={run} />}
+      {tab === 'opponent' && run.next && <OpponentView name={run.next.opponentName} players={run.next.opponent} plan={run.next.opponentPlan} />}
       {tab === 'strategy' && <StrategyEditor roster={run.roster} plan={run.plan} onChange={(plan) => setRun(setPlan(run, plan))} stockIds={new Set(run.stockPlayerIds)} />}
 
       <div className="start-bar">
         <button className="btn btn-primary full-btn" disabled={planErrors.length > 0} onClick={() => update(playGame(run))}>
           {planErrors.length > 0
             ? '作戦に問題があります（「作戦」で修正してください）'
-            : run.rematch
+            : run.next?.rematch
               ? `第${run.gameNumber}戦の再戦を開始`
               : `第${run.gameNumber}戦を開始`}
         </button>

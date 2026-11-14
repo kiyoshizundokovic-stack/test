@@ -6,21 +6,18 @@ import {
   fullName,
   PITCH_LABELS,
   pitchTotal,
+  POSITION_SHORT,
   POSITIONS,
   quickRankOf,
   rankOf,
   stageLabel,
   type GamePlan,
   type Player,
-  type Position,
 } from '../core';
-import { StockBadge } from './PlayerCard';
 
-const SHORT_POS: Record<Position, string> = {
-  P: '投', C: '捕', '1B': '一', '2B': '二', '3B': '三', SS: '遊', LF: '左', CF: '中', RF: '右',
-};
+const SHORT_POS = POSITION_SHORT;
 
-type ColumnKey = 'name' | 'placement' | 'velocity' | 'quick' | 'control' | 'stamina' | 'pitches' | 'wisdom' | 'overall';
+type ColumnKey = 'name' | 'placement' | 'velocity' | 'quick' | 'control' | 'stamina' | 'pitches' | 'speed' | 'wisdom' | 'overall';
 
 interface Column {
   key: ColumnKey;
@@ -55,12 +52,11 @@ interface Props {
   plan: GamePlan;
   roster: readonly Player[];
   stageIndex: number;
-  stockIds: ReadonlySet<string>;
   onPick: (playerId: string) => void;
   onClose: () => void;
 }
 
-export function PitcherTable({ plan, roster, stageIndex, stockIds, onPick, onClose }: Props) {
+export function PitcherTable({ plan, roster, stageIndex, onPick, onClose }: Props) {
   const current = plan.stages[stageIndex]!.positions.P;
   // 並べ替えの「配置」：この段階の投手 → この段階に出場中 → 控え → 再出場できない
   const placementRank = (p: Player) => {
@@ -77,6 +73,7 @@ export function PitcherTable({ plan, roster, stageIndex, stockIds, onPick, onClo
     { key: 'stamina', label: '球数', value: (p) => p.pitcher.stamina },
     { key: 'pitches', label: '球種', value: (p) => pitchTotal(p.pitcher.pitches) },
     { key: 'wisdom', label: '賢さ', value: (p) => p.wisdom },
+    { key: 'speed', label: '走力', value: (p) => p.fielder.speed },
     { key: 'overall', label: '総合', value: (p) => calcOverall(p) },
   ];
   const [sort, setSort] = useState<{ key: ColumnKey; ascending: boolean }>({ key: 'stamina', ascending: false });
@@ -149,7 +146,6 @@ export function PitcherTable({ plan, roster, stageIndex, stockIds, onPick, onClo
                     >
                       {fullName(p.name)}
                     </button>
-                    {stockIds.has(p.id) && <StockBadge />}
                     {!selectable && <span className="note">再出場不可</span>}
                   </th>
                   <td className="placement">{isCurrent ? `${placementText(plan, p.id)}（選択中）` : placementText(plan, p.id)}</td>
@@ -167,6 +163,9 @@ export function PitcherTable({ plan, roster, stageIndex, stockIds, onPick, onClo
                   </td>
                   <td>
                     {rankOf(p.wisdom)} {p.wisdom}
+                  </td>
+                  <td>
+                    {rankOf(p.fielder.speed)} {p.fielder.speed}
                   </td>
                   <td>{calcOverall(p)}</td>
                 </tr>

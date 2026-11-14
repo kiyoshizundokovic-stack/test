@@ -16,14 +16,27 @@ export type RunStatus = 'strategy' | 'game' | 'result' | 'bossReward' | 'gameove
 
 export type Outcome = 'win' | 'loss' | 'draw';
 
-/** 再戦する相手（SPEC 5.6）。選手・打順・守備配置・継投をそのまま再現する */
-export interface RematchSetup {
+/**
+ * 次の試合の相手（試合前に生成しておく。試合前の画面で相手の情報を見られるようにするため）。
+ * 再戦（SPEC 5.6）では、直前の試合の相手（選手・打順・守備配置・継投）をそのまま使う
+ */
+export interface OpponentSetup {
   gameNumber: number;
   boss: boolean;
+  /** 同じ相手との再戦か */
+  rematch: boolean;
   targetAverage: number;
   opponentName: string;
   opponent: Player[];
   opponentPlan: GamePlan;
+}
+
+/** 補強フェーズの状態（売却の取り消し・やり直し用） */
+export interface ReinforceState {
+  /** 補強フェーズを開始したとき（勝利ポイント加算後）の状態 */
+  start: { roster: Player[]; points: number; life: number };
+  /** このフェーズで売却した選手と売却額（取り戻すときは同じポイントを支払う） */
+  sold: { player: Player; price: number }[];
 }
 
 export interface GameSummary {
@@ -58,11 +71,13 @@ export interface CurrentGame {
   pointsGained: number;
   /** 補強フェーズで相手から選手を獲得したか（1人まで） */
   acquired: boolean;
+  /** 補強フェーズの状態（勝利したときのみ。それ以外は null） */
+  reinforce: ReinforceState | null;
 }
 
 export interface RunState {
   /** 進行中のプレイの形式のバージョン（save/format.ts の SAVE_VERSION と同じ） */
-  version: 3;
+  version: 4;
   /** プレイID（UUID）。選手IDの接頭辞になる */
   runId: string;
   /** 次に生成する選手の通し番号（選手ID＝プレイID＋通し番号） */
@@ -87,8 +102,8 @@ export interface RunState {
   record: { wins: number; losses: number; draws: number };
   history: GameSummary[];
   current: CurrentGame | null;
-  /** 次の試合が再戦の場合の相手（選手・作戦がまったく同じ）。通常は null */
-  rematch: RematchSetup | null;
+  /** 次の試合の相手（試合前の状態で用意されている。ゲーム終了後は null） */
+  next: OpponentSetup | null;
   /** ボス報酬の結果（直近） */
   lastBossReward?: { playerId: string; changes: string[] };
 }

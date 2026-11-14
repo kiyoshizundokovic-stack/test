@@ -20,11 +20,16 @@ import {
   acquirePlayer,
   applyBossReward,
   applyBossRewardToPlayer,
+  buyBack,
+  buyBackBlocker,
   buyLife,
   buyLifeBlocker,
   createRun,
+  finishBlocker,
   finishResult,
   playGame,
+  reinforcementChanged,
+  resetReinforcement,
   RunError,
   sellBlocker,
   sellPlayer,
@@ -121,7 +126,7 @@ describe('ローグライク進行', () => {
     expect(() => acquirePlayer(s, b!.id)).toThrow(RunError);
 
     const poor = { ...firstWin(), points: 0 };
-    expect(acquireBlocker(poor, poor.current!.opponent[0]!.id)).toMatch(/ポイントが足りません/);
+    expect(acquireBlocker(poor, poor.current!.opponent[0]!.id)).toMatch(/^あと\d+pt不足$/);
 
     const full = { ...firstWin(), points: 100000 };
     const extra = generatePlayers(new Rng(9), MAX_ROSTER_SIZE - full.roster.length);
@@ -132,15 +137,62 @@ describe('ローグライク進行', () => {
     expect(acquireBlocker(sold, full.current!.opponent[0]!.id)).toBeNull();
   });
 
-  it('売却：総合力と同じポイント。保有9名未満になる売却は不可', () => {
+  it('売却：総合力と同じポイント。一時的に9名未満になってもよいが、9名未満の間は補強フェーズを終えられない', () => {
     const s = firstWin();
     expect(s.roster).toHaveLength(MIN_ROSTER_SIZE);
-    expect(sellBlocker(s, s.roster[0]!.id)).toMatch(/9名未満/);
-    const withExtra = acquirePlayer({ ...s, points: 100000 }, s.current!.opponent[0]!.id);
-    const target = withExtra.roster[0]!;
-    const sold = sellPlayer(withExtra, target.id);
-    expect(sold.roster).toHaveLength(MIN_ROSTER_SIZE);
-    expect(sold.points).toBe(withExtra.points + calcOverall(target));
+    const target = s.roster[0]!;
+    expect(sellBlocker(s, target.id)).toBeNull();
+    const sold = sellPlayer(s, target.id);
+    expect(sold.roster).toHaveLength(MIN_ROSTER_SIZE - 1);
+    expect(sold.points).toBe(s.points + calcOverall(target));
+    expect(finishBlocker(sold)).toMatch(/9名未満です（あと1名）/);
+    expect(() => finishResult(sold)).toThrow(RunError);
+    // 獲得で9名に戻せば終えられる
+    const back = acquirePlayer({ ...sold, points: 100000 }, sold.current!.opponent[0]!.id);
+    expect(finishBlocker(back)).toBeNull();
+    expect(finishResult(back).status).not.toBe('result');
+  });
+
+  it('売却の取り消し：同じフェーズ内なら売却額を支払って取り戻せる（ポイント不足・枠なしは不可）', () => {
+    const s = firstWin();
+    const target = s.roster[2]!;
+    const price = calcOverall(target);
+    const sold = sellPlayer(s, target.id);
+    expect(sold.current!.reinforce!.sold).toEqual([{ player: target, price }]);
+    expect(buyBackBlocker(sold, target.id)).toBeNull();
+    const back = buyBack(sold, target.id);
+    expect(back.points).toBe(s.points);
+    expect(back.roster.map((p) => p.id).sort()).toEqual(s.roster.map((p) => p.id).sort());
+    expect(back.current!.reinforce!.sold).toEqual([]);
+    expect(back.current!.acquired).toBe(false); // 獲得の「1人まで」には数えない
+    // ポイントが足りない
+    const poor = { ...sold, points: price - 10 };
+    expect(buyBackBlocker(poor, target.id)).toBe('あと10pt不足');
+    expect(() => buyBack(poor, target.id)).toThrow(RunError);
+    // 売却していない選手
+    expect(buyBackBlocker(sold, s.roster[0]!.id)).toMatch(/売却した選手ではありません/);
+  });
+
+  it('やり直し：補強フェーズの開始時（選手・ポイント・ライフ・獲得の有無）に戻る', () => {
+    const s = { ...firstWin(), points: 0 };
+    const start = { ...s, current: { ...s.current!, reinforce: { start: { roster: s.roster, points: 5000, life: s.life }, sold: [] } }, points: 5000 };
+    expect(reinforcementChanged(start)).toBe(false);
+    let t = sellPlayer(start, start.roster[0]!.id);
+    t = acquirePlayer(t, t.current!.opponent[0]!.id);
+    t = buyLife({ ...t, points: t.points + LIFE_PRICE });
+    expect(reinforcementChanged(t)).toBe(true);
+    const reset = resetReinforcement(t);
+    expect(reset.roster).toEqual(start.roster);
+    expect(reset.points).toBe(5000);
+    expect(reset.life).toBe(start.life);
+    expect(reset.current!.acquired).toBe(false);
+    expect(reset.current!.reinforce!.sold).toEqual([]);
+    expect(reinforcementChanged(reset)).toBe(false);
+  });
+
+  it('勝利時に補強フェーズの開始状態が記録される（勝利ポイント加算後）', () => {
+    const s = firstWin();
+    expect(s.current!.reinforce!.start).toEqual({ roster: s.roster, points: s.points, life: s.life });
   });
 
   it('ライフ購入：1000ポイントで+1、上限なし', () => {
@@ -148,7 +200,7 @@ describe('ローグライク進行', () => {
     for (let i = 0; i < 3; i++) s = buyLife(s);
     expect(s.life).toBe(INITIAL_LIFE + 3);
     expect(s.points).toBe(5);
-    expect(buyLifeBlocker(s)).toMatch(/ポイントが足りません/);
+    expect(buyLifeBlocker(s)).toMatch(/^あと\d+pt不足$/);
   });
 
   it('ライフ0でゲームオーバー', () => {
@@ -170,7 +222,7 @@ describe('ローグライク進行', () => {
     const base = { ...createRun(5), roster, plan: buildAutoPlan(roster) };
     const seen = { win: false, loss: false, draw: false };
     for (let seed = 0; seed < 200; seed++) {
-      let s: RunState = { ...base, gameNumber: 100, life: 5, rngState: seed };
+      let s: RunState = { ...base, gameNumber: 100, life: 5, rngState: seed, next: null };
       s = showResult(playGame(s));
       const outcome = s.current!.outcome;
       seen[outcome] = true;
@@ -192,29 +244,29 @@ describe('ローグライク進行', () => {
     expect(seen).toEqual({ win: true, loss: true, draw: true });
   });
 
-  it('ボス報酬：各能力+10（球速+3km/h、球種合計+3）。上限は超えない', () => {
+  it('ボス報酬：各能力+3（球速+1km/h、球種合計+1）。上限は超えない', () => {
     const p = generatePlayers(new Rng(4), 1)[0]!;
     const { player: up } = applyBossRewardToPlayer(p, new Rng(1));
     expect(up.fielder.contact).toBe(Math.min(100, p.fielder.contact + BOSS_REWARD.perAbility));
-    expect(up.fielder.steal).toBe(Math.min(100, p.fielder.steal + 10));
-    expect(up.wisdom).toBe(Math.min(100, p.wisdom + 10));
-    expect(up.pitcher.velocityKmh).toBe(Math.min(VELOCITY_MAX_KMH, p.pitcher.velocityKmh + 3));
-    expect(up.pitcher.stamina).toBe(Math.min(150, p.pitcher.stamina + 10));
-    expect(up.pitcher.quick).toBe(Math.min(50, p.pitcher.quick + 10));
+    expect(up.fielder.steal).toBe(Math.min(100, p.fielder.steal + 3));
+    expect(up.wisdom).toBe(Math.min(100, p.wisdom + 3));
+    expect(up.pitcher.velocityKmh).toBe(Math.min(VELOCITY_MAX_KMH, p.pitcher.velocityKmh + 1));
+    expect(up.pitcher.stamina).toBe(Math.min(150, p.pitcher.stamina + 3));
+    expect(up.pitcher.quick).toBe(Math.min(50, p.pitcher.quick + 3));
     const sum = (x: typeof p) => x.pitcher.pitches.reduce((s, y) => s + y.rating, 0);
-    expect(sum(up) - sum(p)).toBe(Math.min(3, p.pitcher.pitches.reduce((s, y) => s + PITCH_RATING_MAX - y.rating, 0)));
+    expect(sum(up) - sum(p)).toBe(Math.min(1, p.pitcher.pitches.reduce((s, y) => s + PITCH_RATING_MAX - y.rating, 0)));
     expect(up.pitcher.pitches.map((x) => x.type)).toEqual(p.pitcher.pitches.map((x) => x.type)); // 新しい球種は増えない
 
     // 上限近くの選手
     const maxed = {
       ...p,
-      fielder: { ...p.fielder, contact: 95 },
-      pitcher: { ...p.pitcher, velocityKmh: 169, pitches: [{ type: 'straight' as const, rating: PITCH_RATING_MAX - 1 }] },
+      fielder: { ...p.fielder, contact: 98 },
+      pitcher: { ...p.pitcher, velocityKmh: VELOCITY_MAX_KMH, pitches: [{ type: 'straight' as const, rating: PITCH_RATING_MAX - 1 }] },
     };
     const r = applyBossRewardToPlayer(maxed, new Rng(2)).player;
     expect(r.fielder.contact).toBe(100);
     expect(r.pitcher.velocityKmh).toBe(VELOCITY_MAX_KMH);
-    expect(r.pitcher.pitches).toEqual([{ type: 'straight', rating: PITCH_RATING_MAX }]); // 余りは切り捨て
+    expect(r.pitcher.pitches).toEqual([{ type: 'straight', rating: PITCH_RATING_MAX }])
   });
 
   it('前回の作戦を引き継ぎ、売却した選手の穴は自動で埋める', () => {
@@ -235,7 +287,7 @@ describe('リベンジ・再戦（SPEC 5.6）', () => {
   /** 指定した結果になるまで試合を行う（試合番号は gameNumber で指定） */
   function until(outcome: 'win' | 'loss' | 'draw', gameNumber: number, life = 5): RunState {
     for (let seed = 0; seed < 300; seed++) {
-      const s = showResult(playGame({ ...createRun(9), gameNumber, life, rngState: seed }));
+      const s = showResult(playGame({ ...createRun(9), gameNumber, life, rngState: seed, next: null }));
       if (s.current!.outcome === outcome) return s;
     }
     throw new Error('not found');
@@ -275,8 +327,9 @@ describe('リベンジ・再戦（SPEC 5.6）', () => {
     const lost = until('loss', 10);
     const first = lost.current!;
     let s = startRematch(lost);
-    expect(s.rematch!.opponent).toEqual(first.opponent);
-    expect(s.rematch!.opponentPlan).toEqual(first.opponentPlan);
+    expect(s.next!.rematch).toBe(true);
+    expect(s.next!.opponent).toEqual(first.opponent);
+    expect(s.next!.opponentPlan).toEqual(first.opponentPlan);
     s = showResult(playGame(s));
     const second = s.current!;
     expect(second.rematch).toBe(true);
@@ -308,7 +361,8 @@ describe('リベンジ・再戦（SPEC 5.6）', () => {
         s = applyBossReward(s, s.roster[0]!.id);
         expect(s.status).toBe('strategy');
         expect(s.gameNumber).toBe(11);
-        expect(s.rematch).toBeNull();
+        expect(s.next!.rematch).toBe(false);
+        expect(s.next!.gameNumber).toBe(11);
         return;
       }
       s = startRematch(s);

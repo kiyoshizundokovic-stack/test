@@ -123,7 +123,7 @@ describe('ストックから連れて行った選手', () => {
   it('売却できず、ボス報酬の対象に選べない', () => {
     let s = createRun(1, 'stock-run-02', stockPlayers);
     for (let seed = 0; seed < 200; seed++) {
-      s = showResult(playGame({ ...createRun(1, 'stock-run-02', stockPlayers), rngState: seed, gameNumber: 10, life: 5 }));
+      s = showResult(playGame({ ...createRun(1, 'stock-run-02', stockPlayers), rngState: seed, gameNumber: 10, life: 5, next: null }));
       if (s.current!.outcome === 'win') break;
     }
     expect(s.current!.outcome).toBe('win');
